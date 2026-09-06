@@ -1,0 +1,193 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["auth", "public"]
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                   String               @id @default(uuid())
+  name                 String
+  email                String               @unique
+  emailVerified        Boolean              @default(false)
+  image                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  // Better-Auth Admin plugin fields
+  role                 String?              @default("user") // "superadmin" | "user"
+  banned               Boolean?             @default(false)
+  banReason            String?
+  banExpires           DateTime?
+
+  // Platform promotion flag controlled by SuperAdmin
+  canCreateEnterprise  Boolean              @default(false)
+
+  // Better-Auth Core & Enterprise relations
+  sessions             Session[]
+  accounts             Account[]
+  members              EnterpriseMember[]
+  invitations          EnterpriseInvitation[]
+  applications         ManagerApplication[]
+  joinRequests         EnterpriseJoinRequest[]
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model Session {
+  id                  String      @id @default(uuid())
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token               String      @unique
+  expiresAt           DateTime
+  ipAddress           String?
+  userAgent           String?
+  impersonatedBy      String?
+  activeEnterpriseId  String?     @map("active_enterprise_id") // Currently selected workspace
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@map("sessions")
+  @@schema("auth")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("accounts")
+  @@schema("auth")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verifications")
+  @@schema("auth")
+}
+
+// Enterprise Model (Replaces Organization)
+model Enterprise {
+  id            String                 @id @default(uuid())
+  name          String
+  slug          String                 @unique
+  logo          String?
+  metadata      Json?
+  
+  // Unique randomly generated login/join key
+  enterpriseKey String                 @unique @map("enterprise_key")
+
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  members       EnterpriseMember[]
+  invitations   EnterpriseInvitation[]
+  joinRequests  EnterpriseJoinRequest[]
+
+  @@index([enterpriseKey])
+  @@map("enterprises")
+  @@schema("public")
+}
+
+model EnterpriseMember {
+  id            String      @id @default(uuid())
+  enterpriseId  String      @map("enterprise_id")
+  enterprise    Enterprise  @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  userId        String      @map("user_id")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Roles: "manager" | "staff"
+  role          String      @default("staff")
+  
+  // Dynamic permissions: e.g. ["stock:view", "stock:receive", "stock:transfer"]
+  permissions   String[]    @default(["stock:view"])
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([enterpriseId, userId])
+  @@map("enterprise_members")
+  @@schema("public")
+}
+
+model EnterpriseJoinRequest {
+  id            String      @id @default(uuid())
+  enterpriseId  String      @map("enterprise_id")
+  enterprise    Enterprise  @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  userId        String      @map("user_id")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  status        String      @default("pending") // "pending" | "approved" | "rejected"
+  permissions   String[]    @default(["stock:view"])
+  
+  reviewedAt    DateTime?   @map("reviewed_at")
+  reviewerId    String?     @map("reviewer_id")
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([enterpriseId])
+  @@index([userId])
+  @@index([status])
+  @@map("enterprise_join_requests")
+  @@schema("public")
+}
+
+model EnterpriseInvitation {
+  id            String      @id @default(uuid())
+  enterpriseId  String      @map("enterprise_id")
+  enterprise    Enterprise  @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  email         String
+  role          String      @default("staff")
+  permissions   String[]    @default(["stock:view"])
+  status        String      @default("pending") // "pending" | "accepted" | "rejected" | "canceled"
+  expiresAt     DateTime
+  inviterId     String
+  user          User        @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@index([enterpriseId, email])
+  @@map("enterprise_invitations")
+  @@schema("public")
+}
+
+model ManagerApplication {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enterpriseName  String    @map("enterprise_name")
+  industry        String
+  businessScale   String    @map("business_scale")
+  reason          String
+  status          String    @default("pending") // "pending" | "approved" | "rejected"
+  reviewerNotes   String?   @map("reviewer_notes")
+  reviewedAt      DateTime? @map("reviewed_at")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("manager_applications")
+  @@schema("public")
+}
