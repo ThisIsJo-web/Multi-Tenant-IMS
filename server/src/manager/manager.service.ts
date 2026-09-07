@@ -8,12 +8,16 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AddStaffDto } from './dto/add-staff.dto.js';
+import { PermTypesService } from '../permtypes/permtypes.service.js';
 
 @Injectable()
 export class ManagerService {
   private readonly logger = new Logger(ManagerService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissionsService?: PermTypesService,
+  ) {}
 
   /**
    * Ensure caller is manager of the specified enterprise or superadmin
@@ -111,12 +115,16 @@ export class ManagerService {
       throw new ConflictException(`User "${cleanEmail}" is already a member of this Enterprise.`);
     }
 
+    const assignedPermissions = this.permissionsService
+      ? this.permissionsService.sanitizePermissions(dto.permissions || [])
+      : (dto.permissions || []);
+
     const newMember = await this.prisma.enterpriseMember.create({
       data: {
         enterpriseId,
         userId: targetUser.id,
         role: dto.role || 'staff',
-        permissions: dto.permissions?.length ? dto.permissions : ['stock:view'],
+        permissions: assignedPermissions,
       },
       include: {
         user: {
@@ -203,8 +211,9 @@ export class ManagerService {
       throw new BadRequestException(`Join request is already ${request.status}`);
     }
 
-    const assignedPermissions =
-      permissions && permissions.length > 0 ? permissions : ['stock:view'];
+    const assignedPermissions = this.permissionsService
+      ? this.permissionsService.sanitizePermissions(permissions || [])
+      : (permissions || []);
 
     // Update request record
     await this.prisma.enterpriseJoinRequest.update({
@@ -320,10 +329,14 @@ export class ManagerService {
       throw new NotFoundException(`Staff member not found in enterprise`);
     }
 
+    const assignedPermissions = this.permissionsService
+      ? this.permissionsService.sanitizePermissions(permissions || [])
+      : (permissions || []);
+
     const updated = await this.prisma.enterpriseMember.update({
       where: { id: memberId },
       data: {
-        permissions: permissions && permissions.length > 0 ? permissions : ['stock:view'],
+        permissions: assignedPermissions,
       },
       include: {
         user: {

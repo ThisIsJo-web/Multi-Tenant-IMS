@@ -40,7 +40,10 @@ export default function SuperAdminPage() {
     setIsLoading(true);
     try {
       const ctxRes = await fetch("/api/enterprise/context");
-      if (!ctxRes.ok) throw new Error("Unauthorized");
+      if (!ctxRes.ok) {
+        router.push("/login");
+        return;
+      }
       const ctx = await ctxRes.json();
 
       if (ctx.user.role !== "superadmin") {

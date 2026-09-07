@@ -104,6 +104,9 @@ model Enterprise {
   members       EnterpriseMember[]
   invitations   EnterpriseInvitation[]
   joinRequests  EnterpriseJoinRequest[]
+  products      Product[]
+  locations     WarehouseLocation[]
+  ledgerEntries StockLedgerEntry[]
 
   @@index([enterpriseKey])
   @@map("enterprises")
@@ -120,8 +123,8 @@ model EnterpriseMember {
   // Roles: "manager" | "staff"
   role          String      @default("staff")
   
-  // Dynamic permissions: e.g. ["stock:view", "stock:receive", "stock:transfer"]
-  permissions   String[]    @default(["stock:view"])
+  // Dynamic permissions: granted by manager (defaults to empty)
+  permissions   String[]    @default([])
   
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -139,7 +142,7 @@ model EnterpriseJoinRequest {
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   status        String      @default("pending") // "pending" | "approved" | "rejected"
-  permissions   String[]    @default(["stock:view"])
+  permissions   String[]    @default([])
   
   reviewedAt    DateTime?   @map("reviewed_at")
   reviewerId    String?     @map("reviewer_id")
@@ -191,3 +194,94 @@ model ManagerApplication {
   @@map("manager_applications")
   @@schema("public")
 }
+
+model Product {
+  id               String            @id @default(uuid())
+  enterpriseId     String            @map("enterprise_id")
+  enterprise       Enterprise        @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  sku              String
+  name             String
+  baseUnit         String            @default("Piece") @map("base_unit")
+  trackingMode     String            @default("Standard") @map("tracking_mode")
+  reorderThreshold Int               @default(10) @map("reorder_threshold")
+  onHand           Int               @default(0) @map("on_hand")
+  reserved         Int               @default(0)
+  availableStock   Int               @default(0) @map("available_stock")
+  status           String            @default("In Stock")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  balances         LocationBalance[]
+  ledgerEntries    StockLedgerEntry[]
+
+  @@unique([enterpriseId, sku])
+  @@index([enterpriseId])
+  @@map("products")
+  @@schema("public")
+}
+
+model WarehouseLocation {
+  id            String              @id @default(uuid())
+  enterpriseId  String              @map("enterprise_id")
+  enterprise    Enterprise          @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  name          String
+  type          String              @default("Shelf")
+  parentId      String?             @map("parent_id")
+  parent        WarehouseLocation?  @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children      WarehouseLocation[] @relation("LocationHierarchy")
+  code          String
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  balances      LocationBalance[]
+
+  @@unique([enterpriseId, code])
+  @@index([enterpriseId])
+  @@map("warehouse_locations")
+  @@schema("public")
+}
+
+model LocationBalance {
+  id           String            @id @default(uuid())
+  enterpriseId String            @map("enterprise_id")
+  productId    String            @map("product_id")
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  locationId   String            @map("location_id")
+  location     WarehouseLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  quantity     Int               @default(0)
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  @@unique([productId, locationId])
+  @@index([enterpriseId])
+  @@index([locationId])
+  @@map("location_balances")
+  @@schema("public")
+}
+
+model StockLedgerEntry {
+  id              String      @id @default(uuid())
+  enterpriseId    String      @map("enterprise_id")
+  enterprise      Enterprise  @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  productId       String?     @map("product_id")
+  product         Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  sku             String
+  productName     String      @map("product_name")
+  action          String      // "RECEIPT" | "TRANSFER" | "DISPATCH" | "ADJUSTMENT" | "AUDIT"
+  quantity        Int         // positive or negative
+  fromLocation    String      @map("from_location")
+  toLocation      String      @map("to_location")
+  performedBy     String      @map("performed_by")
+  performedByRole String      @map("performed_by_role")
+  reference       String?
+  metadata        Json?
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([enterpriseId])
+  @@index([sku])
+  @@index([action])
+  @@index([createdAt])
+  @@map("stock_ledger_entries")
+  @@schema("public")
+}
+

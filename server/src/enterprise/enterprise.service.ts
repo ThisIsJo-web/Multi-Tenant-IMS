@@ -10,18 +10,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { generateEnterpriseKey, isValidEnterpriseKeyFormat } from './utils/enterprise-key.util.js';
 import { auth } from '../auth/auth.js';
-import { CreateEnterpriseDto, KeyLoginDto, SwitchEnterpriseDto } from './dto/index.js';
+import { CreateEnterpriseDto, KeyLoginDto, SwitchEnterpriseDto, UpdateEnterpriseDto } from './dto/index.js';
 
-export const MANAGER_DEFAULT_PERMISSIONS = [
-  'stock:view',
-  'stock:receive',
-  'stock:transfer',
-  'stock:adjust',
-  'stock:audit',
-  'enterprise:manage',
-];
-
-export const STAFF_DEFAULT_PERMISSIONS = ['stock:view'];
+import {
+  MANAGER_DEFAULT_PERMISSIONS,
+  USER_DEFAULT_PERMISSIONS,
+  type PermissionCode,
+} from '../permissions/index.js';
 
 @Injectable()
 export class EnterpriseService {
@@ -132,6 +127,82 @@ export class EnterpriseService {
     );
 
     return result;
+  }
+
+  /**
+   * Update Enterprise Workspace Details.
+   * STRICT ACCESS: Only users with a Managerial role (enterprise manager or superadmin) can edit their enterprise workspace.
+   */
+  async updateEnterprise(userId: string, enterpriseId: string, dto: UpdateEnterpriseDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const isSuperAdmin = user.role === 'superadmin';
+
+    if (!isSuperAdmin) {
+      const membership = await this.prisma.enterpriseMember.findUnique({
+        where: {
+          enterpriseId_userId: {
+            enterpriseId,
+            userId,
+          },
+        },
+      });
+
+      if (!membership || membership.role !== 'manager') {
+        throw new ForbiddenException('Only users with a Managerial role in this enterprise can edit workspace settings');
+      }
+    }
+
+    const currentEnterprise = await this.prisma.enterprise.findUnique({
+      where: { id: enterpriseId },
+    });
+
+    if (!currentEnterprise) {
+      throw new NotFoundException(`Enterprise with ID ${enterpriseId} not found`);
+    }
+
+    // Handle slug change if provided
+    let newSlug = currentEnterprise.slug;
+    if (dto.slug && dto.slug.trim() && dto.slug.trim() !== currentEnterprise.slug) {
+      const baseSlug = this.slugify(dto.slug);
+      const existingSlug = await this.prisma.enterprise.findFirst({
+        where: { slug: baseSlug, NOT: { id: enterpriseId } },
+      });
+      if (existingSlug) {
+        throw new ConflictException(`Workspace URL slug "${baseSlug}" is already taken.`);
+      }
+      newSlug = baseSlug;
+    } else if (dto.name && !dto.slug && dto.name.trim() !== currentEnterprise.name) {
+      // Keep existing slug unless explicitly changed, or adapt slug if empty
+    }
+
+    // Merge metadata
+    const currentMeta = (currentEnterprise.metadata as Record<string, any>) || {};
+    const updatedMeta = dto.metadata ? { ...currentMeta, ...dto.metadata } : currentMeta;
+
+    const updated = await this.prisma.enterprise.update({
+      where: { id: enterpriseId },
+      data: {
+        name: dto.name?.trim() || currentEnterprise.name,
+        slug: newSlug,
+        logo: dto.logo !== undefined ? dto.logo : currentEnterprise.logo,
+        metadata: updatedMeta,
+      },
+    });
+
+    this.logger.log(`Enterprise "${updated.name}" (${updated.id}) updated by manager ${userId}`);
+
+    return {
+      message: 'Enterprise workspace updated successfully',
+      enterprise: updated,
+    };
   }
 
   /**
@@ -251,7 +322,7 @@ export class EnterpriseService {
             enterpriseId: enterprise.id,
             userId,
             status: 'pending',
-            permissions: ['stock:view'],
+            permissions: [],
           },
         });
 

@@ -16,10 +16,10 @@ export default function RootRouterPage() {
       .then((data) => {
         if (data.user?.role === "superadmin") {
           router.replace("/superadmin");
+        } else if (data.activeEnterprise) {
+          router.replace(`/${data.activeEnterprise.slug}`);
         } else if (data.user?.role === "manager") {
           router.replace("/manager");
-        } else if (data.activeEnterprise) {
-          router.replace("/workspace");
         } else {
           router.replace("/enter-key");
         }

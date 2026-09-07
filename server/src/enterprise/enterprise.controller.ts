@@ -3,14 +3,17 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthGuard, CurrentUser, CurrentSession } from '../common/index.js';
+import { PermTypesGuard, RequirePermissions } from '../permtypes/index.js';
 import { EnterpriseService } from './enterprise.service.js';
-import { CreateEnterpriseDto, KeyLoginDto, SwitchEnterpriseDto } from './dto/index.js';
+import { CreateEnterpriseDto, KeyLoginDto, SwitchEnterpriseDto, UpdateEnterpriseDto } from './dto/index.js';
 
 @Controller('api/enterprise')
 export class EnterpriseController {
@@ -36,10 +39,25 @@ export class EnterpriseController {
   }
 
   /**
-   * Authenticated: Create a new enterprise (requires canCreateEnterprise or superadmin)
+   * Authenticated: Update enterprise workspace details
+   * STRICT ACCESS: Only users with a Managerial role in this enterprise can update.
+   */
+  @Patch(':id')
+  @UseGuards(AuthGuard)
+  async updateEnterprise(
+    @CurrentUser('id') userId: string,
+    @Param('id') enterpriseId: string,
+    @Body() dto: UpdateEnterpriseDto,
+  ) {
+    return this.enterpriseService.updateEnterprise(userId, enterpriseId, dto);
+  }
+
+  /**
+   * Authenticated: Create a new enterprise (requires enterprise:create permission)
    */
   @Post('create')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, PermTypesGuard)
+  @RequirePermissions('enterprise:create')
   async createEnterprise(
     @CurrentUser('id') userId: string,
     @CurrentSession('id') sessionId: string,
@@ -49,10 +67,11 @@ export class EnterpriseController {
   }
 
   /**
-   * Authenticated: Rotate Enterprise Key (requires manager role in enterprise or superadmin)
+   * Authenticated: Rotate Enterprise Key (requires enterprise:manage permission)
    */
   @Post('rotate-key')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, PermTypesGuard)
+  @RequirePermissions('enterprise:manage')
   async rotateKey(
     @CurrentUser('id') userId: string,
     @Body('enterpriseId') enterpriseId: string,

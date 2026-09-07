@@ -16,7 +16,10 @@ import {
   Users,
   ArrowRight,
   Boxes,
+  Sparkles,
+  Clock,
 } from "lucide-react";
+import { PERMISSION_MAP, SYSTEM_PERMISSIONS } from "@/types/permissions";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -34,7 +37,10 @@ export default function WorkspacePage() {
   const fetchContext = async () => {
     try {
       const res = await fetch("/api/enterprise/context");
-      if (!res.ok) throw new Error("Unauthorized");
+      if (!res.ok) {
+        router.push("/login");
+        return;
+      }
       const data = await res.json();
 
       setUser(data.user);
@@ -214,30 +220,99 @@ export default function WorkspacePage() {
 
             {/* Dynamic Permissions */}
             <div className="bg-slate-50/80 rounded-xl border border-slate-200/80 p-4">
-              <span className="text-xs font-semibold text-slate-700 block mb-2">
-                Scoped Permissions Granted:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {(activeMembership?.permissions || ["stock:view"]).map((perm: string) => (
-                  <span
-                    key={perm}
-                    className="px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 font-mono text-xs flex items-center gap-1 shadow-2xs"
-                  >
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                    {perm}
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-semibold text-slate-700 block">
+                  Scoped Permissions:
+                </span>
+                {isSuperAdmin && (
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    SuperAdmin Full Access
                   </span>
-                ))}
+                )}
+                {isManager && !isSuperAdmin && (
+                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                    Manager Scoped Access
+                  </span>
+                )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-3">
-                Permissions dynamically authorize inventory, shipment, and stock operations.
-              </p>
+
+              {isSuperAdmin ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {SYSTEM_PERMISSIONS.map((p) => (
+                      <span
+                        key={p.code}
+                        className="px-2 py-1 rounded-md bg-white border border-amber-200/90 text-amber-900 font-mono text-[11px] flex items-center gap-1.5 shadow-2xs"
+                        title={`${p.name} - ${p.description}`}
+                      >
+                        <ShieldCheck className="w-3 h-3 text-amber-600" />
+                        <span>{p.code}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-amber-700/80 mt-2">
+                    All system-wide and enterprise permissions are granted automatically to SuperAdmin.
+                  </p>
+                </div>
+              ) : activeMembership?.permissions && activeMembership.permissions.length > 0 ? (
+                <div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeMembership.permissions.map((perm: string) => {
+                      const def = PERMISSION_MAP.get(perm as any);
+                      return (
+                        <span
+                          key={perm}
+                          className="px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-700 font-mono text-xs flex items-center gap-1.5 shadow-2xs"
+                          title={def ? `${def.name}: ${def.description}` : perm}
+                        >
+                          <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                          <span className="font-sans font-medium text-slate-900">{def ? def.name : perm}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">({perm})</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-3">
+                    Permissions dynamically authorize inventory, shipment, and stock operations.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 flex items-start gap-2.5">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-semibold text-amber-950">No Operational Permissions Assigned</p>
+                    <p className="text-[11px] text-amber-800/90 leading-relaxed">
+                      You are a member of this enterprise workspace, but currently have no operational permissions. Please wait for an enterprise manager to grant permissions to your account.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Quick Navigation Cards */}
-        {(isManager || user.canCreateEnterprise || isSuperAdmin) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {activeEnterprise && (
+            <Link
+              href={`/${activeEnterprise.slug}`}
+              className="bg-slate-900 text-white rounded-2xl border border-slate-800 p-5 hover:bg-slate-800 hover:shadow-md transition group block"
+            >
+              <div className="h-10 w-10 rounded-xl bg-slate-800 text-white flex items-center justify-center mb-3">
+                <Boxes className="w-5 h-5 text-emerald-400" />
+              </div>
+              <h2 className="text-sm font-bold text-white flex items-center justify-between">
+                <span>Launch Inventory Workspace</span>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 group-hover:text-white transition" />
+              </h2>
+              <p className="text-xs text-slate-300 mt-1">
+                Access {activeEnterprise.name} stock dashboard, product catalog, warehouse map, and operations hub.
+              </p>
+            </Link>
+          )}
+
+          {(isManager || user.canCreateEnterprise || isSuperAdmin) && (
             <Link
               href="/manager"
               className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-slate-300 hover:shadow-xs transition group block"
@@ -253,26 +328,26 @@ export default function WorkspacePage() {
                 Manage enterprise staffs, assign inventory permissions, and register new enterprises.
               </p>
             </Link>
+          )}
 
-            {isSuperAdmin && (
-              <Link
-                href="/superadmin"
-                className="bg-white rounded-2xl border border-amber-200/90 p-5 hover:border-amber-300 hover:shadow-xs transition group block"
-              >
-                <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center mb-3">
-                  <Users className="w-5 h-5" />
-                </div>
-                <h2 className="text-sm font-bold text-slate-900 flex items-center justify-between">
-                  <span>SuperAdmin Console</span>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition" />
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Review pending managerial role applications, manage all users and platform state.
-                </p>
-              </Link>
-            )}
-          </div>
-        )}
+          {isSuperAdmin && (
+            <Link
+              href="/superadmin"
+              className="bg-white rounded-2xl border border-amber-200/90 p-5 hover:border-amber-300 hover:shadow-xs transition group block"
+            >
+              <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center mb-3">
+                <Users className="w-5 h-5" />
+              </div>
+              <h2 className="text-sm font-bold text-slate-900 flex items-center justify-between">
+                <span>SuperAdmin Console</span>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition" />
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Review pending managerial role applications, manage all users and platform state.
+              </p>
+            </Link>
+          )}
+        </div>
       </main>
     </div>
   );

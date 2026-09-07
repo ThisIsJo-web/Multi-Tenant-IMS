@@ -24,6 +24,11 @@ import {
   Sliders,
 } from "lucide-react";
 
+import {
+  MANAGER_ASSIGNABLE_PERMISSIONS,
+  PERMISSION_CATEGORIES,
+} from "@/types/permissions";
+
 export default function ManagerPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -45,7 +50,7 @@ export default function ManagerPage() {
   const [orgSlug, setOrgSlug] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
   const [staffRole, setStaffRole] = useState<"staff" | "manager">("staff");
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(["stock:view"]);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [editPermissionsList, setEditPermissionsList] = useState<string[]>([]);
   const [pendingPermissionsMap, setPendingPermissionsMap] = useState<Record<string, string[]>>({});
 
@@ -54,19 +59,27 @@ export default function ManagerPage() {
   const [copiedKey, setCopiedKey] = useState(false);
   const [isRotatingKey, setIsRotatingKey] = useState(false);
 
-  const availablePermissions = [
-    { id: "stock:view", label: "View Stock" },
-    { id: "stock:receive", label: "Receive Stock" },
-    { id: "stock:transfer", label: "Transfer Stock" },
-    { id: "stock:adjust", label: "Adjust Stock" },
-    { id: "stock:audit", label: "Audit Stock" },
-    { id: "enterprise:manage", label: "Enterprise Management" },
-  ];
+  const availablePermissions = MANAGER_ASSIGNABLE_PERMISSIONS.map((p) => ({
+    id: p.code,
+    label: p.name,
+    description: p.description,
+    category: p.category,
+  }));
+
+  const permissionsByCategory = PERMISSION_CATEGORIES.filter((c) => c.id !== "system").map(
+    (cat) => ({
+      ...cat,
+      permissions: availablePermissions.filter((p) => p.category === cat.id),
+    })
+  );
 
   const fetchContext = async () => {
     try {
       const res = await fetch("/api/enterprise/context");
-      if (!res.ok) throw new Error("Unauthorized");
+      if (!res.ok) {
+        router.push("/login");
+        return;
+      }
       const data = await res.json();
 
       if (data.user.role !== "manager" && data.user.role !== "superadmin") {
@@ -113,7 +126,7 @@ export default function ManagerPage() {
         // Initialize permission mappings for pending requests
         const map: Record<string, string[]> = {};
         requests.forEach((r: any) => {
-          map[r.id] = r.permissions && r.permissions.length > 0 ? r.permissions : ["stock:view"];
+          map[r.id] = r.permissions && r.permissions.length > 0 ? r.permissions : [];
         });
         setPendingPermissionsMap(map);
       }
@@ -198,12 +211,18 @@ export default function ManagerPage() {
 
   // Approve Pending Join Request with custom permissions
   const handleApproveRequest = async (requestId: string) => {
-    const permissions = pendingPermissionsMap[requestId] || ["stock:view"];
+    const permissions = pendingPermissionsMap[requestId] || [];
     try {
       const res = await fetch(`/api/manager/join-requests/${requestId}/approve`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ permissions }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(activeEnterprise?.id ? { "x-enterprise-id": activeEnterprise.id } : {}),
+        },
+        body: JSON.stringify({
+          permissions,
+          enterpriseId: activeEnterprise?.id,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to approve request");
@@ -225,6 +244,13 @@ export default function ManagerPage() {
     try {
       const res = await fetch(`/api/manager/join-requests/${requestId}/reject`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(activeEnterprise?.id ? { "x-enterprise-id": activeEnterprise.id } : {}),
+        },
+        body: JSON.stringify({
+          enterpriseId: activeEnterprise?.id,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to reject request");
@@ -241,7 +267,7 @@ export default function ManagerPage() {
   // Toggle permission for a pending request
   const togglePendingPermission = (requestId: string, permId: string) => {
     setPendingPermissionsMap((prev) => {
-      const current = prev[requestId] || ["stock:view"];
+      const current = prev[requestId] || [];
       const updated = current.includes(permId)
         ? current.filter((p) => p !== permId)
         : [...current, permId];
@@ -504,30 +530,45 @@ export default function ManagerPage() {
                       </div>
 
                       {/* Permissions Selection Checklist */}
-                      <div>
-                        <span className="text-[11px] font-semibold text-slate-700 block mb-1">
-                          Apply Operational Permissions:
-                        </span>
-                        <div className="grid grid-cols-2 gap-1.5 bg-white p-2.5 rounded-lg border border-slate-200">
-                          {availablePermissions.map((perm) => {
-                            const isChecked = (
-                              pendingPermissionsMap[req.id] || ["stock:view"]
-                            ).includes(perm.id);
-                            return (
-                              <label
-                                key={perm.id}
-                                className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => togglePendingPermission(req.id, perm.id)}
-                                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                                />
-                                <span>{perm.label}</span>
-                              </label>
-                            );
-                          })}
+                      <div className="space-y-1.5 w-full">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-slate-700">
+                            Apply Operational Permissions:
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {(pendingPermissionsMap[req.id] || []).length} of {availablePermissions.length} selected
+                          </span>
+                        </div>
+                        <div className="space-y-2 bg-white p-2.5 rounded-lg border border-slate-200">
+                          {permissionsByCategory.map((cat) => (
+                            <div key={cat.id} className="space-y-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                                {cat.name}
+                              </span>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {cat.permissions.map((perm) => {
+                                  const isChecked = (
+                                    pendingPermissionsMap[req.id] || []
+                                  ).includes(perm.id);
+                                  return (
+                                    <label
+                                      key={perm.id}
+                                      className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"
+                                      title={perm.description}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => togglePendingPermission(req.id, perm.id)}
+                                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                                      />
+                                      <span>{perm.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -620,16 +661,22 @@ export default function ManagerPage() {
                         </span>
                       </td>
                       <td className="p-3">
-                        <div className="flex flex-wrap gap-1">
-                          {staff.permissions.map((p: string) => (
-                            <span
-                              key={p}
-                              className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 font-mono text-[10px]"
-                            >
-                              {p}
-                            </span>
-                          ))}
-                        </div>
+                        {staff.permissions && staff.permissions.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {staff.permissions.map((p: string) => (
+                              <span
+                                key={p}
+                                className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 font-mono text-[10px]"
+                              >
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">
+                            No permissions granted
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 text-slate-500">
                         {new Date(staff.joinedAt).toLocaleDateString()}
@@ -753,24 +800,53 @@ export default function ManagerPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1.5">
-                  Dynamic Scoped Permissions
-                </label>
-                <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                  {availablePermissions.map((perm) => (
-                    <label
-                      key={perm.id}
-                      className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer"
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-slate-700">
+                    Dynamic Scoped Permissions
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {selectedPermissions.length} of {availablePermissions.length} selected
+                    </span>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPermissions([])}
+                      className="text-[10px] text-slate-500 hover:underline cursor-pointer"
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedPermissions.includes(perm.id)}
-                        onChange={() => togglePermission(perm.id)}
-                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                      />
-                      <span>{perm.label}</span>
-                      <span className="text-[10px] font-mono text-slate-400">({perm.id})</span>
-                    </label>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-3 bg-slate-50 p-3 rounded-xl border border-slate-200 max-h-56 overflow-y-auto">
+                  {permissionsByCategory.map((cat) => (
+                    <div key={cat.id} className="space-y-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                        {cat.name}
+                      </span>
+                      <div className="space-y-1">
+                        {cat.permissions.map((perm) => (
+                          <label
+                            key={perm.id}
+                            className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer hover:bg-slate-100/70 p-1 rounded transition"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedPermissions.includes(perm.id)}
+                              onChange={() => togglePermission(perm.id)}
+                              className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-slate-800">{perm.label}</span>
+                                <span className="text-[10px] font-mono text-slate-400">({perm.id})</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 leading-tight">{perm.description}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -809,24 +885,57 @@ export default function ManagerPage() {
 
             <form onSubmit={handleSaveEditedPermissions} className="mt-4 space-y-4">
               <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1.5">
-                  Dynamic Scoped Permissions
-                </label>
-                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  {availablePermissions.map((perm) => (
-                    <label
-                      key={perm.id}
-                      className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer"
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-slate-700">
+                    Dynamic Scoped Permissions
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditPermissionsList(availablePermissions.map((p) => p.id))}
+                      className="text-[10px] text-blue-600 hover:underline cursor-pointer"
                     >
-                      <input
-                        type="checkbox"
-                        checked={editPermissionsList.includes(perm.id)}
-                        onChange={() => toggleEditPermission(perm.id)}
-                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                      />
-                      <span className="font-medium">{perm.label}</span>
-                      <span className="text-[10px] font-mono text-slate-400">({perm.id})</span>
-                    </label>
+                      Select All
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditPermissionsList([])}
+                      className="text-[10px] text-slate-500 hover:underline cursor-pointer"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-3 bg-slate-50 p-3 rounded-xl border border-slate-200 max-h-64 overflow-y-auto">
+                  {permissionsByCategory.map((cat) => (
+                    <div key={cat.id} className="space-y-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                        {cat.name}
+                      </span>
+                      <div className="space-y-1">
+                        {cat.permissions.map((perm) => (
+                          <label
+                            key={perm.id}
+                            className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer hover:bg-slate-100/70 p-1 rounded transition"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={editPermissionsList.includes(perm.id)}
+                              onChange={() => toggleEditPermission(perm.id)}
+                              className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-slate-800">{perm.label}</span>
+                                <span className="text-[10px] font-mono text-slate-400">({perm.id})</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 leading-tight">{perm.description}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

@@ -6,6 +6,9 @@ import { EnterpriseModule } from './enterprise/enterprise.module.js';
 import { SuperAdminModule } from './superadmin/superadmin.module.js';
 import { ManagerModule } from './manager/manager.module.js';
 import { ManagerApplicationModule } from './manager-application/manager-application.module.js';
+import { PermTypesModule } from './permtypes/permtypes.module.js';
+import { StockModule } from './stock/stock.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 
 @Module({
   imports: [
@@ -15,10 +18,13 @@ import { ManagerApplicationModule } from './manager-application/manager-applicat
     }),
     PrismaModule,
     AuthModule,
+    PermTypesModule,
     EnterpriseModule,
     SuperAdminModule,
     ManagerModule,
     ManagerApplicationModule,
+    StockModule,
+    ReportsModule,
   ],
   controllers: [],
   providers: [],
