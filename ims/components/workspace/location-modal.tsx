@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { LocationType, WarehouseLocation } from "@/types/inventory";
 import { X, MapPin, Plus, AlertCircle } from "lucide-react";
+import { useWorkspace } from "./workspace-context";
 
 interface LocationModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export function LocationModal({
   onSaved,
   existingLocations,
 }: LocationModalProps) {
+  const { activeEnterprise } = useWorkspace();
   const [name, setName] = useState("");
   const [type, setType] = useState<LocationType>("Shelf");
   const [parentId, setParentId] = useState<string>("");
@@ -41,9 +43,14 @@ export function LocationModal({
     setIsSubmitting(true);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (activeEnterprise?.id) {
+        headers["x-enterprise-id"] = activeEnterprise.id;
+      }
+
       const res = await fetch("/api/stock/locations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           name: name.trim(),
           type,

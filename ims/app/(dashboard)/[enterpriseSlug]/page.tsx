@@ -51,10 +51,14 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
+      const headers: HeadersInit = activeEnterprise?.id
+        ? { "x-enterprise-id": activeEnterprise.id }
+        : {};
+
       const [summaryRes, prodRes, locRes] = await Promise.all([
-        fetch("/api/stock/summary"),
-        fetch("/api/stock/products"),
-        fetch("/api/stock/locations"),
+        fetch("/api/stock/summary", { headers }),
+        fetch("/api/stock/products", { headers }),
+        fetch("/api/stock/locations", { headers }),
       ]);
 
       if (summaryRes.ok) {

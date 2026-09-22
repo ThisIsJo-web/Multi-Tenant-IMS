@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { ProductItem, WarehouseLocation } from "@/types/inventory";
+import { useWorkspace } from "@/components/workspace/workspace-context";
 import {
   ArrowLeftRight,
   PackagePlus,
@@ -11,10 +12,21 @@ import {
   RefreshCw,
   Clock,
   Layers,
+  Lock,
 } from "lucide-react";
 
 export default function OperationsPage() {
-  const [activeTab, setActiveTab] = useState<"receive" | "transfer" | "dispatch">("receive");
+  const { activeEnterprise, isManager, hasPermission } = useWorkspace();
+
+  const canReceive = isManager || hasPermission("stock:receive");
+  const canTransfer = isManager || hasPermission("stock:transfer");
+  const canDispatch = isManager || hasPermission("stock:transfer");
+
+  const [activeTab, setActiveTab] = useState<"receive" | "transfer" | "dispatch">(() => {
+    if (canReceive) return "receive";
+    if (canTransfer) return "transfer";
+    return "receive";
+  });
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,9 +44,13 @@ export default function OperationsPage() {
 
   const fetchDependencies = useCallback(async () => {
     try {
+      const headers: HeadersInit = activeEnterprise?.id
+        ? { "x-enterprise-id": activeEnterprise.id }
+        : {};
+
       const [prodRes, locRes] = await Promise.all([
-        fetch("/api/stock/products"),
-        fetch("/api/stock/locations"),
+        fetch("/api/stock/products", { headers }),
+        fetch("/api/stock/locations", { headers }),
       ]);
 
       if (prodRes.ok) {
@@ -62,11 +78,21 @@ export default function OperationsPage() {
   }, [fetchDependencies]);
 
   const selectedProduct = products.find((p) => p.sku === sku);
+  const canPerformActive =
+    (activeTab === "receive" && canReceive) ||
+    (activeTab === "transfer" && canTransfer) ||
+    (activeTab === "dispatch" && canDispatch);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSuccessMsg(null);
     setErrorMsg(null);
+
+    if (!canPerformActive) {
+      setErrorMsg(`Permission Denied: You do not have authorization to perform ${activeTab} operations in this workspace.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -90,9 +116,14 @@ export default function OperationsPage() {
         payload.reference = reference.trim() || undefined;
       }
 
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (activeEnterprise?.id) {
+        headers["x-enterprise-id"] = activeEnterprise.id;
+      }
+
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -147,9 +178,15 @@ export default function OperationsPage() {
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeTab === "receive" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700"}`}>
               <PackagePlus className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-mono text-emerald-700 font-semibold uppercase">
-              + Inbound
-            </span>
+            {canReceive ? (
+              <span className="text-[10px] font-mono text-emerald-700 font-semibold uppercase">
+                + Inbound
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-700 font-semibold uppercase bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                <Lock className="w-2.5 h-2.5" /> Locked
+              </span>
+            )}
           </div>
           <div>
             <span className="text-xs font-bold text-slate-900 block">Receive Stock</span>
@@ -173,9 +210,15 @@ export default function OperationsPage() {
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeTab === "transfer" ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700"}`}>
               <ArrowLeftRight className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-mono text-blue-700 font-semibold uppercase">
-              ⇄ Relocate
-            </span>
+            {canTransfer ? (
+              <span className="text-[10px] font-mono text-blue-700 font-semibold uppercase">
+                ⇄ Relocate
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-700 font-semibold uppercase bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                <Lock className="w-2.5 h-2.5" /> Locked
+              </span>
+            )}
           </div>
           <div>
             <span className="text-xs font-bold text-slate-900 block">Transfer Stock</span>
@@ -199,9 +242,15 @@ export default function OperationsPage() {
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeTab === "dispatch" ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700"}`}>
               <PackageMinus className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-mono text-amber-700 font-semibold uppercase">
-              - Outbound
-            </span>
+            {canDispatch ? (
+              <span className="text-[10px] font-mono text-amber-700 font-semibold uppercase">
+                - Outbound
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-700 font-semibold uppercase bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                <Lock className="w-2.5 h-2.5" /> Locked
+              </span>
+            )}
           </div>
           <div>
             <span className="text-xs font-bold text-slate-900 block">Dispatch Stock</span>
@@ -373,9 +422,11 @@ export default function OperationsPage() {
           <div className="pt-2">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !canPerformActive}
               className={`w-full py-3 px-4 rounded-xl text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-50 ${
-                activeTab === "receive"
+                !canPerformActive
+                  ? "bg-slate-400 cursor-not-allowed"
+                  : activeTab === "receive"
                   ? "bg-emerald-600 hover:bg-emerald-700"
                   : activeTab === "transfer"
                   ? "bg-blue-600 hover:bg-blue-700"
@@ -384,6 +435,8 @@ export default function OperationsPage() {
             >
               {isSubmitting ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : !canPerformActive ? (
+                <Lock className="w-4 h-4" />
               ) : activeTab === "receive" ? (
                 <PackagePlus className="w-4 h-4" />
               ) : activeTab === "transfer" ? (
@@ -394,6 +447,8 @@ export default function OperationsPage() {
               <span>
                 {isSubmitting
                   ? "Submitting to Ledger..."
+                  : !canPerformActive
+                  ? `Permission Required (${activeTab === "receive" ? "stock:receive" : "stock:transfer"})`
                   : activeTab === "receive"
                   ? "Submit Inbound Receipt"
                   : activeTab === "transfer"

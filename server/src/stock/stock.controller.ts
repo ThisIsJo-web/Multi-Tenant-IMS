@@ -21,13 +21,15 @@ import { BaseUnit, LocationType, TrackingMode } from './stock.types.js';
 @Controller('api/stock')
 @UseGuards(AuthGuard, PermTypesGuard)
 export class StockController {
-  constructor(private readonly stockService: StockService) {}
+  constructor(private readonly stockService: StockService) { }
 
   private resolveEnterpriseId(req: any): string {
     const enterpriseId =
       req.enterpriseId ||
+      req.membership?.enterpriseId ||
       req.headers['x-enterprise-id'] ||
       req.session?.activeEnterpriseId ||
+      req.session?.activeOrganizationId ||
       req.query?.enterpriseId ||
       req.body?.enterpriseId;
 
@@ -69,7 +71,7 @@ export class StockController {
   }
 
   @Post('products')
-  @RequirePermissions('stock:receive')
+  @RequirePermissions('products:create')
   async createProduct(
     @CurrentUser() user: any,
     @Req() req: any,
@@ -94,7 +96,7 @@ export class StockController {
   }
 
   @Patch('products/:sku')
-  @RequirePermissions('stock:adjust')
+  @RequirePermissions('products:edit')
   async updateProduct(
     @Req() req: any,
     @Param('sku') sku: string,
@@ -112,7 +114,7 @@ export class StockController {
   }
 
   @Delete('products/:sku')
-  @RequirePermissions('stock:adjust')
+  @RequirePermissions('products:delete')
   async deleteProduct(@Req() req: any, @Param('sku') sku: string) {
     const enterpriseId = this.resolveEnterpriseId(req);
     return this.stockService.deleteProduct(enterpriseId, sku);
@@ -123,14 +125,14 @@ export class StockController {
   // ==========================================
 
   @Get('locations')
-  @RequirePermissions('stock:view')
+  @RequirePermissions('locations:view')
   async listLocations(@Req() req: any) {
     const enterpriseId = this.resolveEnterpriseId(req);
     return this.stockService.listLocations(enterpriseId);
   }
 
   @Post('locations')
-  @RequirePermissions('stock:receive')
+  @RequirePermissions('locations:create')
   async createLocation(
     @Req() req: any,
     @Body()
@@ -146,7 +148,7 @@ export class StockController {
   }
 
   @Delete('locations/:id')
-  @RequirePermissions('stock:adjust')
+  @RequirePermissions('locations:delete')
   async deleteLocation(
     @Req() req: any,
     @Param('id') id: string,
@@ -242,7 +244,7 @@ export class StockController {
    * POS Terminal: Checkout & Real-Time Stock Dispatch
    */
   @Post('pos/checkout')
-  @RequirePermissions('stock:view')
+  @RequirePermissions('pos:access')
   async posCheckout(
     @CurrentUser() user: any,
     @Req() req: any,
@@ -277,7 +279,7 @@ export class StockController {
   // ==========================================
 
   @Get('ledger')
-  @RequirePermissions('stock:view')
+  @RequirePermissions('reports:view')
   async getLedger(
     @Req() req: any,
     @Query('sku') sku?: string,
@@ -348,7 +350,7 @@ export class StockController {
   }
 
   @Get('audit-logs')
-  @RequirePermissions('stock:audit')
+  @RequirePermissions('reports:view')
   async getAuditLogs(@Req() req: any) {
     const enterpriseId = this.resolveEnterpriseId(req);
     return {

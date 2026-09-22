@@ -23,6 +23,10 @@ interface WorkspaceContextValue {
   isManager: boolean;
   isSuperAdmin: boolean;
   canEditWorkspace: boolean;
+  hasPermission: (permission: string) => boolean;
+  hasAnyPermission: (permissions: string[]) => boolean;
+  hasAllPermissions: (permissions: string[]) => boolean;
+  effectivePermissions: string[];
   isEditModalOpen: boolean;
   setIsEditModalOpen: (open: boolean) => void;
   openEditModal: () => void;
@@ -100,51 +104,120 @@ export function WorkspaceProvider({ children, slug }: WorkspaceProviderProps) {
     fetchContext();
   }, [fetchContext]);
 
-  const switchEnterprise = async (enterpriseId: string) => {
-    try {
-      const res = await fetch("/api/enterprise/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enterpriseId }),
-      });
-      if (res.ok) {
-        const target = enterprises.find((e) => e.id === enterpriseId);
-        if (target) {
-          router.push(`/${target.slug}`);
-        } else {
-          await fetchContext();
-        }
-      }
-    } catch (e) {
-      console.error("Failed to switch enterprise", e);
-    }
-  };
-
   const isSuperAdmin = user?.role === "superadmin";
   const isManager = activeMembership?.role === "manager" || isSuperAdmin;
-  const canEditWorkspace = isManager; // STRICT: Only managers or superadmin can edit workspace
+  const canEditWorkspace = isManager;
+
+  const effectivePermissions = React.useMemo(() => {
+    if (isSuperAdmin || isManager) return ["*"];
+    return activeMembership?.permissions || [];
+  }, [isSuperAdmin, isManager, activeMembership?.permissions]);
+
+  const hasPermission = useCallback(
+    (perm: string): boolean => {
+      if (isSuperAdmin || isManager) return true;
+      const perms = activeMembership?.permissions || [];
+      if (perms.includes("*")) return true;
+      if (perms.includes(perm)) return true;
+      // Implied view fallback
+      if (perm === "locations:view" && perms.includes("stock:view")) return true;
+      if (perm === "products:view" && perms.includes("stock:view")) return true;
+      if (perm === "stock:view" && (perms.includes("products:view") || perms.includes("locations:view"))) return true;
+      return false;
+    },
+    [isSuperAdmin, isManager, activeMembership?.permissions]
+  );
+
+  const hasAnyPermission = useCallback(
+    (permsToCheck: string[]): boolean => {
+      if (isSuperAdmin || isManager) return true;
+      return permsToCheck.some((p) => hasPermission(p));
+    },
+    [isSuperAdmin, isManager, hasPermission]
+  );
+
+  const hasAllPermissions = useCallback(
+    (permsToCheck: string[]): boolean => {
+      if (isSuperAdmin || isManager) return true;
+      return permsToCheck.every((p) => hasPermission(p));
+    },
+    [isSuperAdmin, isManager, hasPermission]
+  );
+
+  const openEditModal = useCallback(() => setIsEditModalOpen(true), []);
+  const closeEditModal = useCallback(() => setIsEditModalOpen(false), []);
+
+  const switchEnterprise = useCallback(
+    async (enterpriseId: string) => {
+      try {
+        const res = await fetch("/api/enterprise/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enterpriseId }),
+        });
+        if (res.ok) {
+          const target = enterprises.find((e) => e.id === enterpriseId);
+          if (target) {
+            router.push(`/${target.slug}`);
+          } else {
+            await fetchContext();
+          }
+        }
+      } catch (e) {
+        console.error("Failed to switch enterprise", e);
+      }
+    },
+    [enterprises, fetchContext, router]
+  );
+
+  const contextValue = React.useMemo<WorkspaceContextValue>(
+    () => ({
+      user,
+      activeEnterprise,
+      activeMembership,
+      enterprises,
+      isLoading,
+      isManager,
+      isSuperAdmin,
+      canEditWorkspace,
+      hasPermission,
+      hasAnyPermission,
+      hasAllPermissions,
+      effectivePermissions,
+      isEditModalOpen,
+      setIsEditModalOpen,
+      openEditModal,
+      closeEditModal,
+      refreshContext: fetchContext,
+      switchEnterprise,
+      targetSlug: slug,
+    }),
+    [
+      user,
+      activeEnterprise,
+      activeMembership,
+      enterprises,
+      isLoading,
+      isManager,
+      isSuperAdmin,
+      canEditWorkspace,
+      hasPermission,
+      hasAnyPermission,
+      hasAllPermissions,
+      effectivePermissions,
+      isEditModalOpen,
+      openEditModal,
+      closeEditModal,
+      fetchContext,
+      switchEnterprise,
+      slug,
+    ]
+  );
 
   return (
-    <WorkspaceContext.Provider
-      value={{
-        user,
-        activeEnterprise,
-        activeMembership,
-        enterprises,
-        isLoading,
-        isManager,
-        isSuperAdmin,
-        canEditWorkspace,
-        isEditModalOpen,
-        setIsEditModalOpen,
-        openEditModal: () => setIsEditModalOpen(true),
-        closeEditModal: () => setIsEditModalOpen(false),
-        refreshContext: fetchContext,
-        switchEnterprise,
-        targetSlug: slug,
-      }}
-    >
+    <WorkspaceContext.Provider value={contextValue}>
       {children}
     </WorkspaceContext.Provider>
   );
 }
+

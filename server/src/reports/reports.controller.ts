@@ -5,10 +5,8 @@ import {
   Header,
   Post,
   Req,
-  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
 import { AuthGuard } from '../common/guards/auth.guard.js';
 import { PermTypesGuard } from '../permtypes/permtypes.guard.js';
 import { RequirePermissions } from '../permtypes/permtypes.decorator.js';

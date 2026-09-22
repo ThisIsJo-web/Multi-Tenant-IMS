@@ -1,7 +1,10 @@
 export type PermissionCategory =
   | 'enterprise'
   | 'access_control'
+  | 'locations'
+  | 'products'
   | 'stock'
+  | 'pos'
   | 'reports'
   | 'system';
 
@@ -41,12 +44,58 @@ export const SYSTEM_PERMISSIONS: PermissionDefinition[] = [
     description: 'Directly add, update roles, or remove members within the enterprise',
   },
 
+  // Locations & Warehouse Map
+  {
+    code: 'locations:view',
+    name: 'View Locations & Bins',
+    category: 'locations',
+    description: 'Inspect warehouse structure, zones, aisles, racks, shelves, and storage bins',
+  },
+  {
+    code: 'locations:create',
+    name: 'Add Locations & Bins',
+    category: 'locations',
+    description: 'Create new warehouse locations, aisles, racks, shelves, and storage bins',
+  },
+  {
+    code: 'locations:delete',
+    name: 'Delete Locations',
+    category: 'locations',
+    description: 'Remove warehouse locations and storage bins from the map',
+  },
+
+  // Products & Catalog
+  {
+    code: 'products:view',
+    name: 'View Products',
+    category: 'products',
+    description: 'Inspect SKU catalog, inventory balances, and product information',
+  },
+  {
+    code: 'products:create',
+    name: 'Add Products',
+    category: 'products',
+    description: 'Register and create new products, SKUs, and initial items in the catalog',
+  },
+  {
+    code: 'products:edit',
+    name: 'Edit Products',
+    category: 'products',
+    description: 'Modify product specifications, base units, and reorder thresholds',
+  },
+  {
+    code: 'products:delete',
+    name: 'Delete Products',
+    category: 'products',
+    description: 'Remove or archive items from the product catalog',
+  },
+
   // Stock & Inventory Operations
   {
     code: 'stock:view',
     name: 'View Inventory & Stock',
     category: 'stock',
-    description: 'Inspect stock levels, SKU catalogs, bin locations, and inventory summaries',
+    description: 'Inspect overall stock levels, SKU catalogs, bin locations, and inventory summaries',
   },
   {
     code: 'stock:receive',
@@ -56,9 +105,9 @@ export const SYSTEM_PERMISSIONS: PermissionDefinition[] = [
   },
   {
     code: 'stock:transfer',
-    name: 'Transfer Stock',
+    name: 'Transfer & Dispatch Stock',
     category: 'stock',
-    description: 'Move stock quantities between warehouses, zones, or internal bin locations',
+    description: 'Move stock quantities between warehouses/bins and dispatch outbound items',
   },
   {
     code: 'stock:adjust',
@@ -70,15 +119,23 @@ export const SYSTEM_PERMISSIONS: PermissionDefinition[] = [
     code: 'stock:audit',
     name: 'Audit Stock',
     category: 'stock',
-    description: 'Conduct cycle counts, perform full physical inventory audits, and approve reconciliations',
+    description: 'Conduct cycle counts, perform physical inventory audits, and approve reconciliations',
+  },
+
+  // Point of Sale (POS)
+  {
+    code: 'pos:access',
+    name: 'Point of Sale (POS) Terminal',
+    category: 'pos',
+    description: 'Access cashier terminal, scan barcodes, and process customer checkout transactions',
   },
 
   // Reports & Analytics
   {
     code: 'reports:view',
-    name: 'View Reports',
+    name: 'View Reports & Ledger',
     category: 'reports',
-    description: 'Access inventory analytics, stock valuation, and stock movement transaction reports',
+    description: 'Access inventory analytics, stock valuation, and stock movement transaction logs',
   },
   {
     code: 'reports:export',
@@ -101,11 +158,19 @@ export type PermissionCode =
   | 'enterprise:manage'
   | 'permissions:grant'
   | 'users:manage'
+  | 'locations:view'
+  | 'locations:create'
+  | 'locations:delete'
+  | 'products:view'
+  | 'products:create'
+  | 'products:edit'
+  | 'products:delete'
   | 'stock:view'
   | 'stock:receive'
   | 'stock:transfer'
   | 'stock:adjust'
   | 'stock:audit'
+  | 'pos:access'
   | 'reports:view'
   | 'reports:export'
   | 'system:manage';
@@ -119,19 +184,28 @@ export const SUPERADMIN_PERMISSIONS: PermissionCode[] = SYSTEM_PERMISSIONS.map(
 
 /**
  * Manager default permissions within their enterprise.
- * Includes enterprise management, permission granting, and inventory operations.
+ * Includes enterprise management, permission granting, and all inventory/catalog/location operations.
  */
 export const MANAGER_DEFAULT_PERMISSIONS: PermissionCode[] = [
   'enterprise:create',
   'enterprise:manage',
   'permissions:grant',
   'users:manage',
+  'locations:view',
+  'locations:create',
+  'locations:delete',
+  'products:view',
+  'products:create',
+  'products:edit',
+  'products:delete',
   'stock:view',
   'stock:receive',
   'stock:transfer',
   'stock:adjust',
   'stock:audit',
+  'pos:access',
   'reports:view',
+  'reports:export',
 ];
 
 /**

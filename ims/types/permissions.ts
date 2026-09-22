@@ -1,7 +1,10 @@
 export type PermissionCategory =
   | 'enterprise'
   | 'access_control'
+  | 'locations'
+  | 'products'
   | 'stock'
+  | 'pos'
   | 'reports'
   | 'system';
 
@@ -10,11 +13,19 @@ export type PermissionCode =
   | 'enterprise:manage'
   | 'permissions:grant'
   | 'users:manage'
+  | 'locations:view'
+  | 'locations:create'
+  | 'locations:delete'
+  | 'products:view'
+  | 'products:create'
+  | 'products:edit'
+  | 'products:delete'
   | 'stock:view'
   | 'stock:receive'
   | 'stock:transfer'
   | 'stock:adjust'
   | 'stock:audit'
+  | 'pos:access'
   | 'reports:view'
   | 'reports:export'
   | 'system:manage';
@@ -32,9 +43,29 @@ export const PERMISSION_CATEGORIES: {
   description: string;
 }[] = [
   {
-    id: 'enterprise',
-    name: 'Enterprise Management',
-    description: 'Create and configure enterprises and workspace keys',
+    id: 'locations',
+    name: 'Warehouse & Locations',
+    description: 'Structure, zones, aisles, racks, shelves, and storage bins',
+  },
+  {
+    id: 'products',
+    name: 'Products & Catalog',
+    description: 'Product definitions, SKUs, thresholds, and catalog data',
+  },
+  {
+    id: 'stock',
+    name: 'Stock Movements & Counts',
+    description: 'Inbound receipts, internal transfers, adjustments, and cycle audits',
+  },
+  {
+    id: 'pos',
+    name: 'Storefront Point of Sale',
+    description: 'Cashier checkout terminal, barcode scanning, and instant sales dispatch',
+  },
+  {
+    id: 'reports',
+    name: 'Ledger & Analytics',
+    description: 'Immutable movement ledger, transaction history, and CSV exports',
   },
   {
     id: 'access_control',
@@ -42,14 +73,9 @@ export const PERMISSION_CATEGORIES: {
     description: 'Grant permissions and manage team member memberships',
   },
   {
-    id: 'stock',
-    name: 'Inventory & Stock Operations',
-    description: 'View, receive, transfer, adjust, and audit inventory items',
-  },
-  {
-    id: 'reports',
-    name: 'Reports & Analytics',
-    description: 'View and export inventory analytics and transaction records',
+    id: 'enterprise',
+    name: 'Enterprise Management',
+    description: 'Create and configure enterprises and workspace keys',
   },
   {
     id: 'system',
@@ -59,6 +85,7 @@ export const PERMISSION_CATEGORIES: {
 ];
 
 export const SYSTEM_PERMISSIONS: PermissionDefinition[] = [
+  // Enterprise
   {
     code: 'enterprise:create',
     name: 'Create Enterprise',
@@ -71,6 +98,8 @@ export const SYSTEM_PERMISSIONS: PermissionDefinition[] = [
     description: 'Allows editing enterprise settings and rotating access keys',
     category: 'enterprise',
   },
+
+  // Access Control
   {
     code: 'permissions:grant',
     name: 'Grant Permissions',
@@ -83,48 +112,108 @@ export const SYSTEM_PERMISSIONS: PermissionDefinition[] = [
     description: 'Allows managing users and membership invitations',
     category: 'access_control',
   },
+
+  // Locations
+  {
+    code: 'locations:view',
+    name: 'View Locations & Bins',
+    description: 'Inspect warehouse layout, zones, aisles, shelves, and storage bins',
+    category: 'locations',
+  },
+  {
+    code: 'locations:create',
+    name: 'Add Locations & Bins',
+    description: 'Create new warehouse locations, aisles, racks, and storage bins',
+    category: 'locations',
+  },
+  {
+    code: 'locations:delete',
+    name: 'Delete Locations',
+    description: 'Remove warehouse locations and storage bins from the map',
+    category: 'locations',
+  },
+
+  // Products
+  {
+    code: 'products:view',
+    name: 'View Products',
+    description: 'Inspect product listings, SKU details, and available stock',
+    category: 'products',
+  },
+  {
+    code: 'products:create',
+    name: 'Add Products',
+    description: 'Create new product entries and SKUs in the catalog',
+    category: 'products',
+  },
+  {
+    code: 'products:edit',
+    name: 'Edit Products',
+    description: 'Modify product specifications, base units, and reorder thresholds',
+    category: 'products',
+  },
+  {
+    code: 'products:delete',
+    name: 'Delete Products',
+    description: 'Delete or archive product catalog items',
+    category: 'products',
+  },
+
+  // Stock Operations
   {
     code: 'stock:view',
-    name: 'View Stock',
-    description: 'Allows inspecting inventory levels and SKU listings',
+    name: 'View Stock & Inventory',
+    description: 'Inspect overall stock levels and inventory balances',
     category: 'stock',
   },
   {
     code: 'stock:receive',
     name: 'Receive Stock',
-    description: 'Allows recording incoming inbound stock and shipments',
+    description: 'Record incoming inbound stock and shipments',
     category: 'stock',
   },
   {
     code: 'stock:transfer',
-    name: 'Transfer Stock',
-    description: 'Allows moving inventory between bins or locations',
+    name: 'Transfer & Dispatch Stock',
+    description: 'Move inventory between bins and dispatch outbound orders',
     category: 'stock',
   },
   {
     code: 'stock:adjust',
     name: 'Adjust Stock',
-    description: 'Allows manual quantity corrections and discrepancy adjustments',
+    description: 'Manual quantity corrections, damage, and shrinkage adjustments',
     category: 'stock',
   },
   {
     code: 'stock:audit',
     name: 'Audit Stock',
-    description: 'Allows running full physical inventory audits and count reconciliations',
+    description: 'Conduct cycle counts and physical inventory reconciliations',
     category: 'stock',
   },
+
+  // POS
+  {
+    code: 'pos:access',
+    name: 'Point of Sale (POS) Terminal',
+    description: 'Access cashier terminal, scan items, and process sales checkouts',
+    category: 'pos',
+  },
+
+  // Reports
   {
     code: 'reports:view',
-    name: 'View Reports',
-    description: 'Allows viewing stock movement and valuation reports',
+    name: 'View Reports & Ledger',
+    description: 'View stock movement ledger and inventory reports',
     category: 'reports',
   },
   {
     code: 'reports:export',
     name: 'Export Reports',
-    description: 'Allows exporting CSV/PDF audit and transaction logs',
+    description: 'Export CSV audit and transaction logs',
     category: 'reports',
   },
+
+  // System
   {
     code: 'system:manage',
     name: 'System Admin',

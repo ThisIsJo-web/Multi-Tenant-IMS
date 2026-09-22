@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import {
-  PermissionCategory,
   PermissionCode,
   PermissionDefinition,
   SYSTEM_PERMISSIONS,

@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PermissionChecker } from './permtypes.checker.js';
-import {
-  SUPERADMIN_PERMISSIONS,
-  MANAGER_DEFAULT_PERMISSIONS,
-  PermissionCode,
-} from './permtypes.definitions.js';
+import { SUPERADMIN_PERMISSIONS } from './permtypes.definitions.js';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 
 describe('PermTypes Engine - PermissionChecker', () => {
@@ -140,7 +136,47 @@ describe('PermTypes Engine - PermissionChecker', () => {
     });
   });
 
-  describe('6. Unauthenticated Access', () => {
+  describe('6. Granular Location, Product, and POS Permission Enforcement', () => {
+    it('should allow adding locations when locations:create is granted', () => {
+      const locationStaff = {
+        enterpriseId,
+        userId: regularUser.id,
+        role: 'staff',
+        permissions: ['locations:create'],
+      };
+      const result = PermissionChecker.evaluate(regularUser, locationStaff, ['locations:create']);
+      expect(result.allowed).toBe(true);
+
+      // Verify that deleting locations or adding products is denied
+      const deleteResult = PermissionChecker.evaluate(regularUser, locationStaff, ['locations:delete']);
+      expect(deleteResult.allowed).toBe(false);
+      expect(deleteResult.missingPermissions).toEqual(['locations:delete']);
+
+      const productResult = PermissionChecker.evaluate(regularUser, locationStaff, ['products:create']);
+      expect(productResult.allowed).toBe(false);
+      expect(productResult.missingPermissions).toEqual(['products:create']);
+    });
+
+    it('should support implied view for locations and products when stock:view is granted', () => {
+      const viewerStaff = {
+        enterpriseId,
+        userId: regularUser.id,
+        role: 'staff',
+        permissions: ['stock:view'],
+      };
+      expect(PermissionChecker.evaluate(regularUser, viewerStaff, ['locations:view']).allowed).toBe(true);
+      expect(PermissionChecker.evaluate(regularUser, viewerStaff, ['products:view']).allowed).toBe(true);
+      expect(PermissionChecker.evaluate(regularUser, viewerStaff, ['locations:create']).allowed).toBe(false);
+    });
+
+    it('should grant all granular actions to manager', () => {
+      expect(PermissionChecker.evaluate(managerUser, managerMembership, ['locations:create']).allowed).toBe(true);
+      expect(PermissionChecker.evaluate(managerUser, managerMembership, ['products:create']).allowed).toBe(true);
+      expect(PermissionChecker.evaluate(managerUser, managerMembership, ['pos:access']).allowed).toBe(true);
+    });
+  });
+
+  describe('7. Unauthenticated Access', () => {
     it('should throw 401 UnauthorizedException when user is null', () => {
       expect(() => PermissionChecker.assert(null, null, ['stock:view'])).toThrow(
         UnauthorizedException,

@@ -26,10 +26,14 @@ import {
 import { ProductModal } from "@/components/workspace/product-modal";
 
 export default function ProductsCatalogPage() {
-  const { targetSlug, activeEnterprise } = useWorkspace();
+  const { targetSlug, activeEnterprise, isManager, hasPermission } = useWorkspace();
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const canCreateProduct = isManager || hasPermission("products:create");
+  const canEditProduct = isManager || hasPermission("products:edit");
+  const canDeleteProduct = isManager || hasPermission("products:delete");
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -133,16 +137,18 @@ export default function ProductsCatalogPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingProduct(null);
-            setIsModalOpen(true);
-          }}
-          className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Product</span>
-        </button>
+        {canCreateProduct && (
+          <button
+            onClick={() => {
+              setEditingProduct(null);
+              setIsModalOpen(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Product</span>
+          </button>
+        )}
       </div>
 
       {/* Control Bar: Search & Filters */}
@@ -317,26 +323,30 @@ export default function ProductsCatalogPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </Link>
-                          <button
-                            onClick={() => {
-                              setEditingProduct(product);
-                              setIsModalOpen(true);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-                            title="Edit Product"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setDeleteError(null);
-                              setDeletingProduct(product);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                            title="Delete Product"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canEditProduct && (
+                            <button
+                              onClick={() => {
+                                setEditingProduct(product);
+                                setIsModalOpen(true);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                              title="Edit Product"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canDeleteProduct && (
+                            <button
+                              onClick={() => {
+                                setDeleteError(null);
+                                setDeletingProduct(product);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                              title="Delete Product"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -8,14 +8,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { generateEnterpriseKey, isValidEnterpriseKeyFormat } from './utils/enterprise-key.util.js';
+import { generateEnterpriseKey } from './utils/enterprise-key.util.js';
 import { auth } from '../auth/auth.js';
 import { CreateEnterpriseDto, KeyLoginDto, SwitchEnterpriseDto, UpdateEnterpriseDto } from './dto/index.js';
 
 import {
   MANAGER_DEFAULT_PERMISSIONS,
-  USER_DEFAULT_PERMISSIONS,
-  type PermissionCode,
 } from '../permissions/index.js';
 
 @Injectable()

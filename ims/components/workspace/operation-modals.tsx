@@ -11,6 +11,7 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
+import { useWorkspace } from "./workspace-context";
 
 // ==========================================
 // 1. INBOUND: RECEIVE STOCK MODAL
@@ -33,6 +34,7 @@ export function ReceiveStockModal({
   locations,
   initialSku,
 }: ReceiveStockModalProps) {
+  const { activeEnterprise } = useWorkspace();
   const [sku, setSku] = useState(initialSku || products[0]?.sku || "");
   const [destLocationId, setDestLocationId] = useState(locations[0]?.id || "");
   const [quantity, setQuantity] = useState("10");
@@ -55,9 +57,14 @@ export function ReceiveStockModal({
     setIsSubmitting(true);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (activeEnterprise?.id) {
+        headers["x-enterprise-id"] = activeEnterprise.id;
+      }
+
       const res = await fetch("/api/stock/operations/receive", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           sku,
           destinationLocationId: destLocationId,
@@ -220,6 +227,7 @@ export function TransferStockModal({
   locations,
   initialSku,
 }: TransferStockModalProps) {
+  const { activeEnterprise } = useWorkspace();
   const [sku, setSku] = useState(initialSku || products[0]?.sku || "");
   const [fromLocationId, setFromLocationId] = useState(locations[0]?.id || "");
   const [toLocationId, setToLocationId] = useState(locations[1]?.id || locations[0]?.id || "");
@@ -245,9 +253,14 @@ export function TransferStockModal({
     setIsSubmitting(true);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (activeEnterprise?.id) {
+        headers["x-enterprise-id"] = activeEnterprise.id;
+      }
+
       const res = await fetch("/api/stock/operations/transfer", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           sku,
           fromLocationId,
@@ -413,6 +426,7 @@ export function DispatchStockModal({
   locations,
   initialSku,
 }: DispatchStockModalProps) {
+  const { activeEnterprise } = useWorkspace();
   const [sku, setSku] = useState(initialSku || products[0]?.sku || "");
   const [fromLocationId, setFromLocationId] = useState(locations[0]?.id || "");
   const [quantity, setQuantity] = useState("2");
@@ -435,9 +449,14 @@ export function DispatchStockModal({
     setIsSubmitting(true);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (activeEnterprise?.id) {
+        headers["x-enterprise-id"] = activeEnterprise.id;
+      }
+
       const res = await fetch("/api/stock/operations/dispatch", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           sku,
           fromLocationId,

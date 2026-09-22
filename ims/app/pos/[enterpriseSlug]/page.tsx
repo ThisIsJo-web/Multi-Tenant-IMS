@@ -64,6 +64,7 @@ export default function EnterprisePosPage() {
   const [activeEnterprise, setActiveEnterprise] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [membershipRole, setMembershipRole] = useState<string>("staff");
+  const [permissions, setPermissions] = useState<string[]>([]);
 
   // Operational State
   const [products, setProducts] = useState<PosProduct[]>([]);
@@ -119,6 +120,7 @@ export default function EnterprisePosPage() {
         if (matched) {
           setActiveEnterprise(matched);
           setMembershipRole(data.activeMembership?.role || (data.user?.role === "superadmin" ? "superadmin" : "staff"));
+          setPermissions(data.activeMembership?.permissions || []);
         } else {
           router.push("/workspace");
         }
@@ -358,6 +360,7 @@ export default function EnterprisePosPage() {
   // POS Disabled Guard (Manager Decision)
   const isPosEnabled = activeEnterprise?.metadata?.posEnabled !== false;
   const isManagerOrAdmin = membershipRole === "manager" || user?.role === "superadmin";
+  const canAccessPos = isManagerOrAdmin || permissions.includes("pos:access") || permissions.includes("*");
 
   if (!isPosEnabled) {
     return (
@@ -397,6 +400,40 @@ export default function EnterprisePosPage() {
                 <span>Configure POS in Settings</span>
               </Link>
             )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canAccessPos) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-6 text-slate-900 font-sans">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 shadow-xs text-center space-y-5">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6 stroke-1.5" />
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+              Access Restricted
+            </span>
+            <h1 className="text-base font-bold text-slate-950 pt-2">
+              POS Terminal Permission Required
+            </h1>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Your staff account does not have permission to access the Point of Sale counter (<code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px] text-slate-800">pos:access</code>). Please contact your workspace manager to grant you POS terminal permissions.
+            </p>
+          </div>
+
+          <div className="pt-2 flex flex-col gap-2">
+            <Link
+              href={`/${enterpriseSlug}`}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-center gap-2 transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Return to IMS Workspace</span>
+            </Link>
           </div>
         </div>
       </div>

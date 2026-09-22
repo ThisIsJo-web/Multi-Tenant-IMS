@@ -8,6 +8,7 @@ import {
   WarehouseLocation,
 } from "@/types/inventory";
 import { X, Boxes, Plus, Save, AlertCircle } from "lucide-react";
+import { useWorkspace } from "./workspace-context";
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export function ProductModal({
   editingProduct,
   locations = [],
 }: ProductModalProps) {
+  const { activeEnterprise } = useWorkspace();
   const isEditing = !!editingProduct;
 
   const [sku, setSku] = useState("");
@@ -66,15 +68,21 @@ export function ProductModal({
     setIsSubmitting(true);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (activeEnterprise?.id) {
+        headers["x-enterprise-id"] = activeEnterprise.id;
+      }
+
       if (isEditing) {
         const res = await fetch(`/api/stock/products/${encodeURIComponent(sku)}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             name: name.trim(),
             baseUnit,
             trackingMode,
             reorderThreshold: Number(reorderThreshold),
+            enterpriseId: activeEnterprise?.id,
           }),
         });
         const data = await res.json();
@@ -82,7 +90,7 @@ export function ProductModal({
       } else {
         const res = await fetch("/api/stock/products", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             sku: sku.trim().toUpperCase(),
             name: name.trim(),
@@ -91,6 +99,7 @@ export function ProductModal({
             reorderThreshold: Number(reorderThreshold),
             initialLocationId: initialLocationId || undefined,
             initialQuantity: Number(initialQuantity) || 0,
+            enterpriseId: activeEnterprise?.id,
           }),
         });
         const data = await res.json();

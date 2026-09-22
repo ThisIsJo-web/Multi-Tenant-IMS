@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { StockLedgerRecord } from "@/types/inventory";
+import { useWorkspace } from "@/components/workspace/workspace-context";
 import {
   ScrollText,
   Search,
@@ -10,9 +11,13 @@ import {
   RefreshCw,
   Clock,
   ShieldCheck,
+  Lock,
 } from "lucide-react";
 
 export default function StockLedgerPage() {
+  const { activeEnterprise, isManager, hasPermission } = useWorkspace();
+  const canExport = isManager || hasPermission("reports:export");
+
   const [logs, setLogs] = useState<StockLedgerRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -23,12 +28,16 @@ export default function StockLedgerPage() {
 
   const fetchLedger = useCallback(async () => {
     try {
+      const headers: HeadersInit = activeEnterprise?.id
+        ? { "x-enterprise-id": activeEnterprise.id }
+        : {};
+
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (actionFilter !== "ALL") params.set("action", actionFilter);
       if (locationFilter) params.set("location", locationFilter);
 
-      const res = await fetch(`/api/stock/ledger?${params.toString()}`);
+      const res = await fetch(`/api/stock/ledger?${params.toString()}`, { headers });
       if (res.ok) {
         const data = await res.json();
         setLogs(data);
@@ -102,11 +111,16 @@ export default function StockLedgerPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={exportCSV}
-            disabled={logs.length === 0}
+            disabled={logs.length === 0 || !canExport}
+            title={!canExport ? "Requires reports:export permission" : undefined}
             className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export CSV</span>
+            {canExport ? (
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+            ) : (
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+            )}
+            <span>{canExport ? "Export CSV" : "Export (Locked)"}</span>
           </button>
         </div>
       </div>
@@ -207,10 +221,10 @@ export default function StockLedgerPage() {
                   const badgeBg = isReceipt
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                     : isTransfer
-                    ? "bg-blue-50 text-blue-700 border-blue-200"
-                    : isDispatch
-                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                    : "bg-slate-100 text-slate-700 border-slate-200";
+                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                      : isDispatch
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-slate-100 text-slate-700 border-slate-200";
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/70 transition">
@@ -256,8 +270,8 @@ export default function StockLedgerPage() {
                             log.quantity > 0
                               ? "text-emerald-600"
                               : log.quantity < 0
-                              ? "text-rose-600"
-                              : "text-slate-800"
+                                ? "text-rose-600"
+                                : "text-slate-800"
                           }
                         >
                           {log.quantity > 0 ? `+${log.quantity}` : log.quantity}

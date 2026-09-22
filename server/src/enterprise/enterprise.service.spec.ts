@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { EnterpriseService } from './enterprise.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { generateEnterpriseKey, isValidEnterpriseKeyFormat } from './utils/enterprise-key.util.js';
-import { ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, BadRequestException } from '@nestjs/common';
 import { auth } from '../auth/auth.js';
 
 describe('Enterprise Key and Hierarchy System', () => {
@@ -41,7 +41,7 @@ describe('Enterprise Key and Hierarchy System', () => {
       return user!;
     }
 
-    const superAdmin = await ensureTestUser('Super Admin', 'superadmin-spec@ims.local', 'superadmin', true);
+    await ensureTestUser('Super Admin', 'superadmin-spec@ims.local', 'superadmin', true);
     const manager = await ensureTestUser('Alex Manager', 'manager@ims.local', 'manager', true);
     const staff = await ensureTestUser('Sam Staff', 'staff@ims.local', 'user', false);
 

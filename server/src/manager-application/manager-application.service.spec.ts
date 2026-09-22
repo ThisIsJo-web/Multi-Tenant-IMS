@@ -27,8 +27,8 @@ describe('Manager Application & Staff Management', () => {
       update: { role: 'manager', canCreateEnterprise: true },
     });
     const staff = await prisma.user.upsert({
-      where: { email: 'staff@ims.local' },
-      create: { name: 'Sam Staff', email: 'staff@ims.local', role: 'user', canCreateEnterprise: false, emailVerified: true },
+      where: { email: 'spec-staff-applicant@ims.local' },
+      create: { name: 'Sam Staff', email: 'spec-staff-applicant@ims.local', role: 'user', canCreateEnterprise: false, emailVerified: true },
       update: { role: 'user', canCreateEnterprise: false },
     });
 
@@ -55,21 +55,21 @@ describe('Manager Application & Staff Management', () => {
 
   afterAll(async () => {
     await prisma.managerApplication.deleteMany({
-      where: { user: { email: { in: ['staff-app-test@ims.local', 'manager-app-test@ims.local', 'reviewer-app-test@ims.local', 'superadmin-app-test@ims.local', 'staff@ims.local', 'manager@ims.local', 'reviewer@ims.local', 'superadmin-spec@ims.local'] } } },
+      where: { user: { email: { in: ['staff-app-test@ims.local', 'manager-app-test@ims.local', 'reviewer-app-test@ims.local', 'superadmin-app-test@ims.local', 'spec-staff-applicant@ims.local', 'manager@ims.local', 'reviewer@ims.local', 'superadmin-spec@ims.local'] } } },
     });
     await prisma.enterpriseMember.deleteMany({
-      where: { user: { email: { in: ['staff-app-test@ims.local', 'manager-app-test@ims.local', 'reviewer-app-test@ims.local', 'superadmin-app-test@ims.local', 'staff@ims.local', 'manager@ims.local', 'reviewer@ims.local', 'superadmin-spec@ims.local'] } } },
+      where: { user: { email: { in: ['staff-app-test@ims.local', 'manager-app-test@ims.local', 'reviewer-app-test@ims.local', 'superadmin-app-test@ims.local', 'spec-staff-applicant@ims.local', 'manager@ims.local', 'reviewer@ims.local', 'superadmin-spec@ims.local'] } } },
     });
     await prisma.enterprise.deleteMany({ where: { slug: 'apex-logistics' } });
     await prisma.user.deleteMany({
-      where: { email: { in: ['staff-app-test@ims.local', 'manager-app-test@ims.local', 'reviewer-app-test@ims.local', 'superadmin-app-test@ims.local', 'staff@ims.local', 'manager@ims.local', 'reviewer@ims.local', 'superadmin-spec@ims.local'] } },
+      where: { email: { in: ['staff-app-test@ims.local', 'manager-app-test@ims.local', 'reviewer-app-test@ims.local', 'superadmin-app-test@ims.local', 'spec-staff-applicant@ims.local', 'manager@ims.local', 'reviewer@ims.local', 'superadmin-spec@ims.local'] } },
     });
     await prisma.$disconnect();
   });
 
   describe('Managerial Role Application Flow', () => {
     it('should allow a regular user to submit an application', async () => {
-      const staff = await prisma.user.findUnique({ where: { email: 'staff@ims.local' } });
+      const staff = await prisma.user.findUnique({ where: { email: 'spec-staff-applicant@ims.local' } });
       expect(staff).toBeDefined();
 
       // Reset staff to 'user' role and clean any existing applications

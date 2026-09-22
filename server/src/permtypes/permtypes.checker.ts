@@ -94,9 +94,19 @@ export class PermissionChecker {
       effectivePermissions = [...USER_DEFAULT_PERMISSIONS];
     }
 
-    // 4. Permission Check against Required Permissions
+    // 4. Permission Check against Required Permissions (with implied permission aliases)
     const permSet = new Set(effectivePermissions);
-    const missingPermissions = requiredPermissions.filter((p) => !permSet.has(p));
+    const hasPerm = (required: PermissionCode): boolean => {
+      if (permSet.has(required)) return true;
+      if (permSet.has('*')) return true;
+      // Implied / parent category fallback
+      if (required === 'locations:view' && permSet.has('stock:view')) return true;
+      if (required === 'products:view' && permSet.has('stock:view')) return true;
+      if (required === 'stock:view' && (permSet.has('products:view') || permSet.has('locations:view'))) return true;
+      return false;
+    };
+
+    const missingPermissions = requiredPermissions.filter((p) => !hasPerm(p));
 
     return {
       allowed: missingPermissions.length === 0,

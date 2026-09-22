@@ -13,8 +13,6 @@ import {
   Layers,
   Settings,
   LogOut,
-  User,
-  Shield,
   Sparkles,
   Edit3,
   Store,

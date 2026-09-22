@@ -19,7 +19,6 @@ interface WorkspaceGuardProps {
 export function WorkspaceGuard({ children }: WorkspaceGuardProps) {
   const {
     user,
-    activeEnterprise,
     enterprises,
     isLoading,
     targetSlug,

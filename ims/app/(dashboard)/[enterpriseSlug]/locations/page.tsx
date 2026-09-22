@@ -21,11 +21,14 @@ import {
 import { LocationModal } from "@/components/workspace/location-modal";
 
 export default function LocationsPage() {
-  const { targetSlug, activeEnterprise } = useWorkspace();
+  const { targetSlug, activeEnterprise, isManager, hasPermission } = useWorkspace();
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const canAddLocation = isManager || hasPermission("locations:create");
+  const canDeleteLocation = isManager || hasPermission("locations:delete");
 
   // In-App Location Deletion Modal State
   const [deletingLocation, setDeletingLocation] = useState<WarehouseLocation | null>(null);
@@ -131,13 +134,15 @@ export default function LocationsPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Location</span>
-        </button>
+        {canAddLocation && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Location</span>
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -218,17 +223,19 @@ export default function LocationsPage() {
                           {root.itemCount} distinct SKUs
                         </span>
                       </div>
-                      <button
-                        onClick={() => {
-                          setDeletingLocation(root);
-                          setDeleteError(null);
-                          setForceDelete(false);
-                        }}
-                        className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer"
-                        title="Delete location"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canDeleteLocation && (
+                        <button
+                          onClick={() => {
+                            setDeletingLocation(root);
+                            setDeleteError(null);
+                            setForceDelete(false);
+                          }}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer"
+                          title="Delete location"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -260,17 +267,19 @@ export default function LocationsPage() {
                                 <span className="text-xs font-mono font-semibold text-slate-800">
                                   {child.totalUnits} units
                                 </span>
-                                <button
-                                  onClick={() => {
-                                    setDeletingLocation(child);
-                                    setDeleteError(null);
-                                    setForceDelete(false);
-                                  }}
-                                  className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
-                                  title="Delete sub-location"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
+                                {canDeleteLocation && (
+                                  <button
+                                    onClick={() => {
+                                      setDeletingLocation(child);
+                                      setDeleteError(null);
+                                      setForceDelete(false);
+                                    }}
+                                    className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                                    title="Delete sub-location"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
                               </div>
                             </div>
 
@@ -295,17 +304,19 @@ export default function LocationsPage() {
                                       <span className="font-mono font-semibold text-slate-800">
                                         {grandChild.totalUnits} units
                                       </span>
-                                      <button
-                                        onClick={() => {
-                                          setDeletingLocation(grandChild);
-                                          setDeleteError(null);
-                                          setForceDelete(false);
-                                        }}
-                                        className="text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                                        title="Delete bin/shelf"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
+                                      {canDeleteLocation && (
+                                        <button
+                                          onClick={() => {
+                                            setDeletingLocation(grandChild);
+                                            setDeleteError(null);
+                                            setForceDelete(false);
+                                          }}
+                                          className="text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                                          title="Delete bin/shelf"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 ))}

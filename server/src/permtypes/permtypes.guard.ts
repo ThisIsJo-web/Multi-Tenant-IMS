@@ -89,18 +89,66 @@ export class PermTypesGuard implements CanActivate {
       });
     }
 
-    // Fallback: If user is a manager in any enterprise and enterpriseId was not specified in the URL,
-    // resolve to their manager membership
+    // Fallback if enterpriseId was not specified in the request or membership not found yet:
     if (!membership && !enterpriseId) {
-      const mgrMem = await this.prisma.enterpriseMember.findFirst({
-        where: {
-          userId: user.id,
-          role: 'manager',
-        },
-      });
-      if (mgrMem) {
-        enterpriseId = mgrMem.enterpriseId;
-        membership = mgrMem;
+      // 1. Check session in DB for activeEnterpriseId
+      if (request.session?.id) {
+        const dbSession = await this.prisma.session.findUnique({
+          where: { id: request.session.id },
+          select: { activeEnterpriseId: true },
+        });
+        if (dbSession?.activeEnterpriseId) {
+          const sMem = await this.prisma.enterpriseMember.findUnique({
+            where: {
+              enterpriseId_userId: {
+                enterpriseId: dbSession.activeEnterpriseId,
+                userId: user.id,
+              },
+            },
+          });
+          if (sMem) {
+            enterpriseId = dbSession.activeEnterpriseId;
+            membership = sMem;
+          }
+        }
+      }
+
+      // 2. Check product's enterprise if SKU is in route or body
+      const skuCandidate = request.params?.sku || request.body?.sku;
+      if (!membership && skuCandidate && typeof skuCandidate === 'string') {
+        const prod = await this.prisma.product.findFirst({
+          where: { sku: skuCandidate.trim().toUpperCase() },
+          select: { enterpriseId: true },
+        });
+        if (prod) {
+          const pMem = await this.prisma.enterpriseMember.findUnique({
+            where: {
+              enterpriseId_userId: {
+                enterpriseId: prod.enterpriseId,
+                userId: user.id,
+              },
+            },
+          });
+          if (pMem) {
+            enterpriseId = prod.enterpriseId;
+            membership = pMem;
+          }
+        }
+      }
+
+      // 3. Fallback to user's enterprise memberships (supports both managers and staff)
+      if (!membership) {
+        const userMemberships = await this.prisma.enterpriseMember.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (userMemberships.length > 0) {
+          // If user has a manager role in any, prefer that; otherwise take first valid membership
+          const preferred = userMemberships.find((m) => m.role === 'manager') || userMemberships[0];
+          enterpriseId = preferred.enterpriseId;
+          membership = preferred;
+        }
       }
     }
 

@@ -12,7 +12,6 @@ import {
   ScrollText,
   Users,
   Settings,
-  Sparkles,
   Building2,
   Store,
   ArrowRight,
@@ -20,54 +19,64 @@ import {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { targetSlug, activeEnterprise, canEditWorkspace } = useWorkspace();
+  const { targetSlug, activeEnterprise, isManager, hasPermission } = useWorkspace();
 
   const basePath = `/${targetSlug}`;
 
-  const navItems = [
+  const allNavItems = [
     {
       name: "Dashboard",
       href: basePath,
       icon: LayoutDashboard,
       exact: true,
+      requiresManager: false,
     },
     {
       name: "Products",
       href: `${basePath}/products`,
       icon: Boxes,
       exact: false,
+      requiresManager: false,
     },
     {
       name: "Locations",
       href: `${basePath}/locations`,
       icon: MapPin,
       exact: false,
+      requiresManager: false,
     },
     {
       name: "Operations",
       href: `${basePath}/operations`,
       icon: ArrowLeftRight,
       exact: false,
+      requiresManager: false,
     },
     {
       name: "Stock Ledger",
       href: `${basePath}/ledger`,
       icon: ScrollText,
       exact: false,
+      requiresManager: false,
     },
     {
       name: "Team & Roles",
       href: `${basePath}/settings/team`,
       icon: Users,
       exact: false,
+      requiresManager: true,
     },
     {
       name: "Workspace Settings",
       href: `${basePath}/settings`,
       icon: Settings,
       exact: true,
+      requiresManager: true,
     },
   ];
+
+  // Strictly filter out managerial tabs when user is not an enterprise manager
+  const navItems = allNavItems.filter((item) => !item.requiresManager || isManager);
 
   return (
     <aside className="w-64 shrink-0 bg-white border-r border-slate-200/80 min-h-[calc(100vh-57px)] p-4 flex flex-col justify-between">
@@ -105,7 +114,8 @@ export function Sidebar() {
         {/* Standalone POS Terminal Launcher */}
         {(() => {
           const isPosEnabled = activeEnterprise?.metadata?.posEnabled !== false;
-          if (!isPosEnabled && !canEditWorkspace) return null;
+          const canAccessPos = isManager || hasPermission("pos:access");
+          if (!isPosEnabled || !canAccessPos) return null;
 
           return (
             <div data-tour="pos-launcher" className="pt-2 border-t border-slate-100">

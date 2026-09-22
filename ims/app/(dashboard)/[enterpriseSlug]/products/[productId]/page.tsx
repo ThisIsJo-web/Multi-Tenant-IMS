@@ -44,7 +44,7 @@ export function ProductDetailClient({
   const decodedSku = decodeURIComponent(productId);
 
   const router = useRouter();
-  const { activeEnterprise } = useWorkspace();
+  const { activeEnterprise, isManager, hasPermission } = useWorkspace();
   const [product, setProduct] = useState<ProductItem | null>(null);
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
   const [locationBreakdown, setLocationBreakdown] = useState<
@@ -52,6 +52,10 @@ export function ProductDetailClient({
   >([]);
   const [history, setHistory] = useState<StockLedgerRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const canReceive = isManager || hasPermission("stock:receive");
+  const canTransfer = isManager || hasPermission("stock:transfer");
+  const canDelete = isManager || hasPermission("products:delete");
 
   // Modals
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
@@ -164,31 +168,37 @@ export function ProductDetailClient({
         </Link>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsReceiveOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-          >
-            <PackagePlus className="w-3.5 h-3.5" />
-            <span>Receive More</span>
-          </button>
-          <button
-            onClick={() => setIsTransferOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5 text-slate-500" />
-            <span>Transfer</span>
-          </button>
-          <button
-            onClick={() => {
-              setDeleteError(null);
-              setIsDeleteOpen(true);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-            title="Delete this product from catalog"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-slate-500 hover:text-rose-600" />
-            <span>Delete</span>
-          </button>
+          {canReceive && (
+            <button
+              onClick={() => setIsReceiveOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            >
+              <PackagePlus className="w-3.5 h-3.5" />
+              <span>Receive More</span>
+            </button>
+          )}
+          {canTransfer && (
+            <button
+              onClick={() => setIsTransferOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5 text-slate-500" />
+              <span>Transfer</span>
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => {
+                setDeleteError(null);
+                setIsDeleteOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+              title="Delete this product from catalog"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-slate-500 hover:text-rose-600" />
+              <span>Delete</span>
+            </button>
+          )}
         </div>
       </div>
 
