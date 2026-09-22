@@ -22,6 +22,9 @@ import {
   Trash2,
   UserCheck,
   Sliders,
+  AlertCircle,
+  X,
+  Boxes,
 } from "lucide-react";
 
 import {
@@ -58,6 +61,16 @@ export default function ManagerPage() {
   const [showKey, setShowKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [isRotatingKey, setIsRotatingKey] = useState(false);
+
+  // Enterprise Deletion state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteCode, setDeleteCode] = useState("");
+  const [isDeletingEnterprise, setIsDeletingEnterprise] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // In-app alert banners
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   const availablePermissions = MANAGER_ASSIGNABLE_PERMISSIONS.map((p) => ({
     id: p.code,
@@ -173,10 +186,12 @@ export default function ManagerPage() {
       setShowAddOrgModal(false);
       setOrgName("");
       setOrgSlug("");
-      alert(`Enterprise "${data.enterprise.name}" registered with key: ${data.enterprise.enterpriseKey}`);
+      setSuccessBanner(`Enterprise "${data.enterprise.name}" registered with key: ${data.enterprise.enterpriseKey}`);
+      setTimeout(() => setSuccessBanner(null), 6000);
       await fetchContext();
     } catch (err: any) {
-      alert(err.message);
+      setErrorBanner(err.message || "Failed to create enterprise");
+      setTimeout(() => setErrorBanner(null), 5000);
     }
   };
 
@@ -202,10 +217,12 @@ export default function ManagerPage() {
       setShowAddStaffModal(false);
       setStaffEmail("");
       setSelectedPermissions(["stock:view"]);
-      alert(data.message);
+      setSuccessBanner(data.message || "Staff member added successfully");
+      setTimeout(() => setSuccessBanner(null), 5000);
       loadStaff(activeEnterprise.id);
     } catch (err: any) {
-      alert(err.message);
+      setErrorBanner(err.message || "Failed to add staff member");
+      setTimeout(() => setErrorBanner(null), 5000);
     }
   };
 
@@ -227,20 +244,20 @@ export default function ManagerPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to approve request");
 
-      alert(data.message);
+      setSuccessBanner(data.message || "Join request approved successfully");
+      setTimeout(() => setSuccessBanner(null), 5000);
       if (activeEnterprise) {
         loadPendingRequests(activeEnterprise.id);
         loadStaff(activeEnterprise.id);
       }
     } catch (err: any) {
-      alert(err.message);
+      setErrorBanner(err.message || "Failed to approve request");
+      setTimeout(() => setErrorBanner(null), 5000);
     }
   };
 
   // Reject Pending Join Request
   const handleRejectRequest = async (requestId: string) => {
-    if (!confirm("Are you sure you want to reject this join request?")) return;
-
     try {
       const res = await fetch(`/api/manager/join-requests/${requestId}/reject`, {
         method: "POST",
@@ -255,12 +272,11 @@ export default function ManagerPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to reject request");
 
-      alert(data.message);
       if (activeEnterprise) {
         loadPendingRequests(activeEnterprise.id);
       }
     } catch (err: any) {
-      alert(err.message);
+      console.error("Failed to reject request:", err.message);
     }
   };
 
@@ -275,23 +291,23 @@ export default function ManagerPage() {
     });
   };
 
-  // Open Edit Permissions Modal for an existing staff member
+  // Open Edit Permissions Modal
   const handleOpenEditPermissions = (staff: any) => {
     setEditingStaff(staff);
-    setEditPermissionsList([...staff.permissions]);
+    setEditPermissionsList(staff.permissions || []);
   };
 
+  // Toggle permission in edit modal
   const toggleEditPermission = (permId: string) => {
     setEditPermissionsList((prev) =>
       prev.includes(permId) ? prev.filter((p) => p !== permId) : [...prev, permId]
     );
   };
 
-  // Save edited permissions for active staff member
-  const handleSaveEditedPermissions = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeEnterprise || !editingStaff) return;
-
+  // Update Staff Permissions
+  const handleSaveStaffPermissions = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingStaff) return;
     try {
       const res = await fetch(
         `/api/manager/enterprises/${activeEnterprise.id}/staff/${editingStaff.id}/permissions`,
@@ -304,18 +320,20 @@ export default function ManagerPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to update permissions");
 
+      setSuccessBanner("Staff permissions updated successfully.");
+      setTimeout(() => setSuccessBanner(null), 5000);
       setEditingStaff(null);
-      alert(data.message);
       loadStaff(activeEnterprise.id);
     } catch (err: any) {
-      alert(err.message);
+      setErrorBanner(err.message || "Failed to update staff permissions");
+      setTimeout(() => setErrorBanner(null), 5000);
     }
   };
 
+  const handleSaveEditedPermissions = handleSaveStaffPermissions;
+
   // Remove staff member from enterprise
   const handleRemoveStaff = async (staffId: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove ${name} from this enterprise?`)) return;
-
     try {
       const res = await fetch(
         `/api/manager/enterprises/${activeEnterprise.id}/staff/${staffId}`,
@@ -324,17 +342,15 @@ export default function ManagerPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to remove staff member");
 
-      alert(data.message);
       loadStaff(activeEnterprise.id);
     } catch (err: any) {
-      alert(err.message);
+      console.error("Failed to remove staff:", err.message);
     }
   };
 
   // Key rotation
   const handleRotateKey = async () => {
     if (!activeEnterprise) return;
-    if (!confirm(`Are you sure you want to regenerate the Enterprise Key for ${activeEnterprise.name}?`)) return;
 
     setIsRotatingKey(true);
     try {
@@ -347,11 +363,52 @@ export default function ManagerPage() {
       if (!res.ok) throw new Error(data.message);
 
       setActiveEnterprise((prev: any) => ({ ...prev, enterpriseKey: data.enterprise.enterpriseKey }));
-      alert(`New Enterprise Key: ${data.enterprise.enterpriseKey}`);
     } catch (err: any) {
-      alert(err.message);
+      console.error("Failed to rotate key:", err.message);
     } finally {
       setIsRotatingKey(false);
+    }
+  };
+
+  // Enterprise Deletion with Code
+  const handleDeleteEnterprise = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeEnterprise) return;
+    if (!deleteCode.trim()) {
+      setDeleteError("Please enter the Enterprise Key or Name to confirm deletion.");
+      return;
+    }
+
+    setIsDeletingEnterprise(true);
+    setDeleteError(null);
+    try {
+      const code = deleteCode.trim();
+      let res = await fetch(
+        `/api/enterprise/${activeEnterprise.id}?code=${encodeURIComponent(code)}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        }
+      );
+
+      if (!res.ok && res.status !== 400 && res.status !== 403 && res.status !== 404) {
+        res = await fetch(`/api/enterprise/${activeEnterprise.id}/delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to delete enterprise");
+
+      setShowDeleteModal(false);
+      window.location.reload();
+    } catch (err: any) {
+      setDeleteError(err.message);
+    } finally {
+      setIsDeletingEnterprise(false);
     }
   };
 
@@ -386,6 +443,38 @@ export default function ManagerPage() {
       />
 
       <main className="max-w-6xl mx-auto p-6 space-y-6">
+        {/* Success Banner */}
+        {successBanner && (
+          <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3 text-xs text-slate-800 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="font-semibold">{successBanner}</span>
+            </div>
+            <button
+              onClick={() => setSuccessBanner(null)}
+              className="text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Error Banner */}
+        {errorBanner && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 shadow-xs flex items-center justify-between gap-3 text-xs text-rose-800 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-semibold">{errorBanner}</span>
+            </div>
+            <button
+              onClick={() => setErrorBanner(null)}
+              className="text-rose-400 hover:text-rose-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Manager Header & Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
           <div>
@@ -403,9 +492,18 @@ export default function ManagerPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {activeEnterprise && (
+              <button
+                onClick={() => router.push("/workspace")}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>Workspace VM</span>
+              </button>
+            )}
             <button
               onClick={() => setShowAddOrgModal(true)}
-              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Add Enterprise</span>
@@ -419,12 +517,25 @@ export default function ManagerPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div>
                 <span className="text-xs text-slate-500">Managing Organization:</span>
-                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <span>{activeEnterprise.name}</span>
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {activeEnterprise.name}
+                  </h2>
                   <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
                     /{activeEnterprise.slug}
                   </span>
-                </h2>
+                  <a
+                    href={`/${activeEnterprise.slug}/settings`}
+                    className={`text-xs font-mono px-2 py-0.5 rounded-full border transition hover:opacity-80 flex items-center gap-1 ${
+                      activeEnterprise?.metadata?.posEnabled !== false
+                        ? "bg-slate-100 text-slate-800 border-slate-300"
+                        : "bg-slate-50 text-slate-400 border-slate-200"
+                    }`}
+                    title="Configure POS in Workspace Settings"
+                  >
+                    <span>POS: {activeEnterprise?.metadata?.posEnabled !== false ? "Enabled" : "Disabled"}</span>
+                  </a>
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
@@ -463,17 +574,30 @@ export default function ManagerPage() {
                   onClick={() => copyToClipboard(activeEnterprise.enterpriseKey)}
                   className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-xs font-medium flex items-center gap-1 hover:bg-slate-100 transition cursor-pointer"
                 >
-                  {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedKey ? <Check className="w-3.5 h-3.5 text-slate-900" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedKey ? "Copied" : "Copy Key"}</span>
                 </button>
 
                 <button
                   onClick={handleRotateKey}
                   disabled={isRotatingKey}
-                  className="px-2.5 py-1.5 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-medium flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-medium flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRotatingKey ? "animate-spin" : ""}`} />
                   <span>Rotate Key</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(true);
+                    setDeleteCode("");
+                    setDeleteError(null);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                  title="Delete this enterprise workspace"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Enterprise</span>
                 </button>
               </div>
             </div>
@@ -953,6 +1077,82 @@ export default function ManagerPage() {
                   className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-medium cursor-pointer"
                 >
                   Save Permissions
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Enterprise Modal */}
+      {showDeleteModal && activeEnterprise && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Delete Enterprise: {activeEnterprise.name}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Permanently deletes this workspace along with all products, warehouse locations, and transaction history.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleDeleteEnterprise} className="space-y-4 pt-2 border-t border-slate-100">
+              {deleteError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                  <XCircle className="w-4 h-4 shrink-0" />
+                  <span>{deleteError}</span>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Verification Code (Key or Name):
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteCode(activeEnterprise.enterpriseKey || "")}
+                    className="text-[11px] text-rose-600 hover:text-rose-800 font-semibold cursor-pointer underline"
+                  >
+                    Auto-fill Key
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder={`e.g. ${activeEnterprise.enterpriseKey || activeEnterprise.name}`}
+                  value={deleteCode}
+                  onChange={(e) => setDeleteCode(e.target.value)}
+                  className="w-full text-xs font-mono px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Enter <code>{activeEnterprise.enterpriseKey}</code> or <code>{activeEnterprise.name}</code> to confirm.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setDeleteError(null);
+                  }}
+                  className="px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isDeletingEnterprise || !deleteCode.trim()}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 className={`w-3.5 h-3.5 ${isDeletingEnterprise ? "animate-spin" : ""}`} />
+                  <span>{isDeletingEnterprise ? "Deleting..." : "Permanently Delete"}</span>
                 </button>
               </div>
             </form>

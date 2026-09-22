@@ -15,6 +15,9 @@ import {
   XCircle,
   RefreshCw,
   Search,
+  Trash2,
+  AlertCircle,
+  Boxes,
 } from "lucide-react";
 
 type SuperAdminTab = "applications" | "users" | "enterprises";
@@ -31,6 +34,13 @@ export default function SuperAdminPage() {
   const [usersList, setUsersList] = useState<any[]>([]);
   const [enterprisesList, setEnterprisesList] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Delete enterprise modal state
+  const [enterpriseToDelete, setEnterpriseToDelete] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Reject modal
   const [rejectingAppId, setRejectingAppId] = useState<string | null>(null);
@@ -92,12 +102,14 @@ export default function SuperAdminPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to update application");
 
-      alert(`Application ${status} successfully.`);
+      setSuccessBanner(`Application ${status} successfully.`);
+      setTimeout(() => setSuccessBanner(null), 5000);
       setRejectingAppId(null);
       setRejectNotes("");
       loadData();
     } catch (err: any) {
-      alert(err.message);
+      setErrorBanner(err.message || "Failed to update application");
+      setTimeout(() => setErrorBanner(null), 5000);
     }
   };
 
@@ -114,8 +126,45 @@ export default function SuperAdminPage() {
       setUsersList((prev) =>
         prev.map((u) => (u.id === targetUserId ? { ...u, canCreateEnterprise: !currentVal } : u))
       );
+      setSuccessBanner("User enterprise creation permission updated successfully.");
+      setTimeout(() => setSuccessBanner(null), 4000);
     } catch (err: any) {
-      alert(err.message);
+      setErrorBanner(err.message || "Failed to toggle permission");
+      setTimeout(() => setErrorBanner(null), 5000);
+    }
+  };
+
+  // SuperAdmin freely removes enterprise via in-app confirmation modal
+  const confirmDeleteEnterprise = async () => {
+    if (!enterpriseToDelete) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      let res = await fetch(`/api/admin/enterprises/${enterpriseToDelete.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok && res.status !== 400 && res.status !== 403 && res.status !== 404) {
+        res = await fetch(`/api/admin/enterprises/${enterpriseToDelete.id}/delete`, {
+          method: "POST",
+        });
+      }
+      if (!res.ok && res.status !== 400 && res.status !== 403 && res.status !== 404) {
+        res = await fetch(`/api/enterprise/${enterpriseToDelete.id}`, {
+          method: "DELETE",
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to delete enterprise");
+
+      setSuccessBanner(data.message || `Enterprise "${enterpriseToDelete.name}" deleted successfully.`);
+      setTimeout(() => setSuccessBanner(null), 5000);
+      setEnterpriseToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete enterprise. Please try again.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -139,6 +188,38 @@ export default function SuperAdminPage() {
       />
 
       <main className="max-w-6xl mx-auto p-6 space-y-6">
+        {/* Success Banner */}
+        {successBanner && (
+          <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3 text-xs text-slate-800 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="font-semibold">{successBanner}</span>
+            </div>
+            <button
+              onClick={() => setSuccessBanner(null)}
+              className="text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Error Banner */}
+        {errorBanner && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 shadow-xs flex items-center justify-between gap-3 text-xs text-rose-800 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-semibold">{errorBanner}</span>
+            </div>
+            <button
+              onClick={() => setErrorBanner(null)}
+              className="text-rose-400 hover:text-rose-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -158,13 +239,22 @@ export default function SuperAdminPage() {
             </div>
           </div>
 
-          <button
-            onClick={loadData}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Refresh Console</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push("/workspace")}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs"
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              <span>Workspace VM</span>
+            </button>
+            <button
+              onClick={loadData}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -436,6 +526,20 @@ export default function SuperAdminPage() {
                   <div className="pt-2 border-t border-slate-200/60 font-mono text-xs text-slate-700 select-all">
                     Key: {ent.enterpriseKey}
                   </div>
+                  <div className="pt-2 flex items-center justify-between border-t border-slate-200/60">
+                    <span className="text-[10px] text-slate-400">SuperAdmin Action</span>
+                    <button
+                      onClick={() => {
+                        setEnterpriseToDelete(ent);
+                        setDeleteError(null);
+                      }}
+                      className="px-2.5 py-1 text-xs font-medium text-rose-700 hover:text-rose-800 hover:bg-rose-50 border border-rose-200/80 rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+                      title="Superadmin can delete any enterprise freely"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Enterprise</span>
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -472,6 +576,63 @@ export default function SuperAdminPage() {
                 className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer"
               >
                 Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SuperAdmin Delete Enterprise Modal */}
+      {enterpriseToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Delete Enterprise: {enterpriseToDelete.name}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  As SuperAdmin, you can remove this enterprise freely. All products, warehouse locations, immutable ledger transactions, and member records will be permanently deleted.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1 text-xs font-mono text-slate-600">
+              <div><span className="text-slate-400">ID:</span> {enterpriseToDelete.id}</div>
+              <div><span className="text-slate-400">Slug:</span> /{enterpriseToDelete.slug}</div>
+              <div><span className="text-slate-400">Key:</span> {enterpriseToDelete.enterpriseKey}</div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setEnterpriseToDelete(null);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className="px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteEnterprise}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className={`w-3.5 h-3.5 ${isDeleting ? "animate-spin" : ""}`} />
+                <span>{isDeleting ? "Deleting..." : "Permanently Delete"}</span>
               </button>
             </div>
           </div>

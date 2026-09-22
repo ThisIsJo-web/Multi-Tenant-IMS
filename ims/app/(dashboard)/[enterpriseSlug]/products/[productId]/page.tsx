@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-context";
 import {
   ProductItem,
@@ -22,6 +23,7 @@ import {
   Tag,
   Shield,
   Layers,
+  Trash2,
 } from "lucide-react";
 import {
   ReceiveStockModal,
@@ -41,6 +43,8 @@ export function ProductDetailClient({
 }) {
   const decodedSku = decodeURIComponent(productId);
 
+  const router = useRouter();
+  const { activeEnterprise } = useWorkspace();
   const [product, setProduct] = useState<ProductItem | null>(null);
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
   const [locationBreakdown, setLocationBreakdown] = useState<
@@ -52,12 +56,19 @@ export function ProductDetailClient({
   // Modals
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
+      const headers: HeadersInit = activeEnterprise?.id
+        ? { "x-enterprise-id": activeEnterprise.id }
+        : {};
+
       const [prodDetailRes, allLocsRes] = await Promise.all([
-        fetch(`/api/stock/products/${encodeURIComponent(decodedSku)}`),
-        fetch("/api/stock/locations"),
+        fetch(`/api/stock/products/${encodeURIComponent(decodedSku)}`, { headers }),
+        fetch("/api/stock/locations", { headers }),
       ]);
 
       if (prodDetailRes.ok) {
@@ -76,11 +87,39 @@ export function ProductDetailClient({
     } finally {
       setIsLoading(false);
     }
-  }, [decodedSku]);
+  }, [decodedSku, activeEnterprise?.id]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleDeleteProduct = async () => {
+    if (!product) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const headers: HeadersInit = activeEnterprise?.id
+        ? { "x-enterprise-id": activeEnterprise.id }
+        : {};
+
+      const res = await fetch(
+        `/api/stock/products/${encodeURIComponent(product.sku)}`,
+        {
+          method: "DELETE",
+          headers,
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to delete product");
+
+      router.push(`/${enterpriseSlug}/products`);
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete product");
+      setIsDeleting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -139,6 +178,17 @@ export function ProductDetailClient({
             <ArrowRightLeft className="w-3.5 h-3.5 text-slate-500" />
             <span>Transfer</span>
           </button>
+          <button
+            onClick={() => {
+              setDeleteError(null);
+              setIsDeleteOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            title="Delete this product from catalog"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-slate-500 hover:text-rose-600" />
+            <span>Delete</span>
+          </button>
         </div>
       </div>
 
@@ -160,8 +210,8 @@ export function ProductDetailClient({
 
           <div className="flex items-center gap-2">
             {isInStock && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                <CheckCircle2 className="w-3.5 h-3.5 text-slate-700" />
                 <span>In Stock</span>
               </span>
             )}
@@ -368,6 +418,89 @@ export function ProductDetailClient({
         locations={locations}
         initialSku={product.sku}
       />
+
+      {/* In-App Delete Confirmation Modal */}
+      {isDeleteOpen && product && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95 font-sans">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-950">Delete Product</h3>
+                <p className="text-xs text-slate-500">
+                  Confirm permanent removal from inventory
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-600 leading-relaxed">
+                Are you sure you want to delete <strong className="text-slate-950 font-semibold">{product.name}</strong>?
+              </p>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 font-mono text-[11px]">
+                <div className="flex justify-between text-slate-700">
+                  <span>SKU:</span>
+                  <span className="font-bold text-slate-900">{product.sku}</span>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <span>On Hand:</span>
+                  <span>{product.onHand} {product.baseUnit}s</span>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <span>Available (ATP):</span>
+                  <span className="font-semibold text-slate-900">{product.availableStock} {product.baseUnit}s</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                All associated warehouse location balances for this product will be permanently deleted. Historical stock ledger transactions will remain preserved.
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteOpen(false);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteProduct}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Product</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

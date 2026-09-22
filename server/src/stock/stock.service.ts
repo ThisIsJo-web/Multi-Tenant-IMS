@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -300,17 +301,40 @@ export class StockService {
     };
   }
 
-  async deleteProduct(enterpriseId: string, sku: string): Promise<{ message: string }> {
-    const product = await this.prisma.product.findUnique({
-      where: { enterpriseId_sku: { enterpriseId, sku } },
+  async deleteProduct(enterpriseId: string, skuOrId: string): Promise<{ message: string }> {
+    let product = await this.prisma.product.findUnique({
+      where: { enterpriseId_sku: { enterpriseId, sku: skuOrId } },
     });
 
     if (!product) {
-      throw new NotFoundException(`Product SKU "${sku}" not found`);
+      product = await this.prisma.product.findFirst({
+        where: { enterpriseId, id: skuOrId },
+      });
     }
 
-    await this.prisma.product.delete({ where: { id: product.id } });
-    return { message: `Product ${sku} deleted successfully` };
+    if (!product) {
+      throw new NotFoundException(`Product "${skuOrId}" not found in this enterprise`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Delete associated location balances
+      await tx.locationBalance.deleteMany({
+        where: { productId: product.id },
+      });
+
+      // 2. Safely decouple ledger entries so historical audits remain
+      await tx.stockLedgerEntry.updateMany({
+        where: { productId: product.id },
+        data: { productId: null },
+      });
+
+      // 3. Delete the product
+      await tx.product.delete({
+        where: { id: product.id },
+      });
+    });
+
+    return { message: `Product "${product.name}" (${product.sku}) deleted successfully` };
   }
 
   // ==========================================
@@ -389,13 +413,18 @@ export class StockService {
     };
   }
 
-  async deleteLocation(enterpriseId: string, locationId: string): Promise<{ message: string }> {
+  async deleteLocation(
+    enterpriseId: string,
+    locationId: string,
+    force = false,
+  ): Promise<{ message: string }> {
     const loc = await this.prisma.warehouseLocation.findUnique({
       where: { id: locationId },
       include: {
         balances: {
-          where: { quantity: { gt: 0 } },
+          include: { product: true },
         },
+        children: true,
       },
     });
 
@@ -403,15 +432,65 @@ export class StockService {
       throw new NotFoundException(`Location ID "${locationId}" not found in this enterprise`);
     }
 
-    const totalStock = loc.balances.reduce((acc, b) => acc + b.quantity, 0);
-    if (totalStock > 0) {
+    const positiveBalances = loc.balances.filter((b) => b.quantity > 0);
+    const totalStock = positiveBalances.reduce((acc, b) => acc + b.quantity, 0);
+
+    if (totalStock > 0 && !force) {
       throw new BadRequestException(
-        `Cannot delete location with ${totalStock} active units remaining. Transfer stock out first.`,
+        `Cannot delete location "${loc.name}" with ${totalStock} active units remaining. Transfer stock out first.`,
       );
     }
 
-    await this.prisma.warehouseLocation.delete({ where: { id: locationId } });
-    return { message: 'Location deleted successfully' };
+    await this.prisma.$transaction(async (tx) => {
+      // 1. If force deleting with remaining stock, adjust product onHand & availableStock
+      if (totalStock > 0 && force) {
+        for (const bal of positiveBalances) {
+          if (bal.product) {
+            const newOnHand = Math.max(0, bal.product.onHand - bal.quantity);
+            const newAvail = Math.max(0, newOnHand - bal.product.reserved);
+            await tx.product.update({
+              where: { id: bal.productId },
+              data: {
+                onHand: newOnHand,
+                availableStock: newAvail,
+                status: newAvail <= 0 ? 'Out of Stock' : newAvail <= bal.product.reorderThreshold ? 'Low Stock' : 'In Stock',
+              },
+            });
+          }
+        }
+      }
+
+      // 2. Delete all location balances for this location
+      await tx.locationBalance.deleteMany({
+        where: { locationId },
+      });
+
+      // 3. Promote child locations to root (set parentId = null)
+      await tx.warehouseLocation.updateMany({
+        where: { parentId: locationId },
+        data: { parentId: null },
+      });
+
+      // 4. If enterprise defaultPosLocationId is this location, clear it
+      const ent = await tx.enterprise.findUnique({
+        where: { id: enterpriseId },
+        select: { metadata: true },
+      });
+      const meta = (ent?.metadata as Record<string, any>) || {};
+      if (meta.defaultPosLocationId === locationId) {
+        const updatedMeta = { ...meta };
+        delete updatedMeta.defaultPosLocationId;
+        await tx.enterprise.update({
+          where: { id: enterpriseId },
+          data: { metadata: updatedMeta },
+        });
+      }
+
+      // 5. Delete the location
+      await tx.warehouseLocation.delete({ where: { id: locationId } });
+    });
+
+    return { message: `Location "${loc.name}" deleted successfully` };
   }
 
   // ==========================================
@@ -1164,4 +1243,246 @@ export class StockService {
       timestamp: e.createdAt.toISOString(),
     }));
   }
+
+  // ==========================================
+  // 6. POS CHECKOUT & REAL-TIME STOCK DEDUCTION
+  // ==========================================
+
+  async posCheckout(
+    enterpriseId: string,
+    userId: string,
+    userName: string,
+    userRole: string,
+    data: {
+      items: Array<{
+        sku: string;
+        quantity: number;
+        unitPrice: number;
+      }>;
+      paymentMethod: string;
+      amountPaid?: number;
+      discount?: number;
+      taxRate?: number;
+      customerName?: string;
+      notes?: string;
+      locationId?: string;
+    },
+  ) {
+    if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
+      throw new BadRequestException('At least one item is required for checkout');
+    }
+
+    // 0. Verify Enterprise & ensure POS is enabled
+    const enterprise = await this.prisma.enterprise.findUnique({
+      where: { id: enterpriseId },
+    });
+    if (!enterprise) {
+      throw new NotFoundException(`Enterprise with ID ${enterpriseId} not found`);
+    }
+
+    const meta = (enterprise.metadata as Record<string, any>) || {};
+    if (meta.posEnabled === false) {
+      throw new ForbiddenException(
+        `Point of Sale (POS) is disabled for ${enterprise.name}. An enterprise manager can enable it in Workspace Settings.`,
+      );
+    }
+
+    // Resolve optional fulfilling warehouse location
+    let fulfillmentLocation: any = null;
+    if (data.locationId) {
+      fulfillmentLocation = await this.prisma.warehouseLocation.findFirst({
+        where: { id: data.locationId, enterpriseId },
+      });
+    }
+    if (!fulfillmentLocation && meta.defaultPosLocationId) {
+      fulfillmentLocation = await this.prisma.warehouseLocation.findFirst({
+        where: { id: meta.defaultPosLocationId, enterpriseId },
+      });
+    }
+
+    const locationLabel = fulfillmentLocation
+      ? `${fulfillmentLocation.name} (${fulfillmentLocation.code})`
+      : 'Front POS Register';
+
+    const receiptNumber = `POS-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const processedItems = [];
+      let subtotal = 0;
+
+      // 1. Process each item: validate, deduct from location balances and update Product onHand / ATP
+      for (const item of data.items) {
+        const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+        const unitPrice = Math.max(0, Number(item.unitPrice) || 0);
+        subtotal += unitPrice * qty;
+
+        const product = await tx.product.findUnique({
+          where: { enterpriseId_sku: { enterpriseId, sku: item.sku } },
+        });
+
+        if (!product) {
+          throw new NotFoundException(`Product with SKU "${item.sku}" not found in this enterprise catalog`);
+        }
+
+        if (product.availableStock < qty) {
+          throw new BadRequestException(
+            `Insufficient stock for "${product.name}" (${product.sku}). Available: ${product.availableStock} ${product.baseUnit}s, requested: ${qty}.`,
+          );
+        }
+
+        let remainingToDeduct = qty;
+
+        // If specific location selected, deduct from it first
+        if (fulfillmentLocation) {
+          const locBalance = await tx.locationBalance.findUnique({
+            where: {
+              productId_locationId: {
+                productId: product.id,
+                locationId: fulfillmentLocation.id,
+              },
+            },
+          });
+
+          if (locBalance && locBalance.quantity > 0) {
+            const deduct = Math.min(locBalance.quantity, remainingToDeduct);
+            await tx.locationBalance.update({
+              where: { id: locBalance.id },
+              data: { quantity: { decrement: deduct } },
+            });
+            remainingToDeduct -= deduct;
+          }
+        }
+
+        // Deduct from remaining location balances if needed
+        if (remainingToDeduct > 0) {
+          const balances = await tx.locationBalance.findMany({
+            where: {
+              enterpriseId,
+              productId: product.id,
+              quantity: { gt: 0 },
+              ...(fulfillmentLocation ? { locationId: { not: fulfillmentLocation.id } } : {}),
+            },
+            orderBy: { quantity: 'desc' },
+          });
+
+          for (const balance of balances) {
+            if (remainingToDeduct <= 0) break;
+            const deductAmount = Math.min(balance.quantity, remainingToDeduct);
+            await tx.locationBalance.update({
+              where: { id: balance.id },
+              data: { quantity: { decrement: deductAmount } },
+            });
+            remainingToDeduct -= deductAmount;
+          }
+        }
+
+        // If no location balance was pre-existing, tie to default location or specified location
+        if (remainingToDeduct > 0) {
+          const fallbackLoc =
+            fulfillmentLocation ||
+            (await tx.warehouseLocation.findFirst({
+              where: { enterpriseId },
+            }));
+
+          if (fallbackLoc) {
+            await tx.locationBalance.upsert({
+              where: {
+                productId_locationId: {
+                  productId: product.id,
+                  locationId: fallbackLoc.id,
+                },
+              },
+              update: { quantity: { decrement: remainingToDeduct } },
+              create: {
+                enterpriseId,
+                productId: product.id,
+                locationId: fallbackLoc.id,
+                quantity: -remainingToDeduct,
+              },
+            });
+          }
+        }
+
+        // Update product totals
+        const newOnHand = Math.max(0, product.onHand - qty);
+        const newAvailable = Math.max(0, newOnHand - product.reserved);
+        let status: ProductStatus = 'In Stock';
+        if (newAvailable <= 0) status = 'Out of Stock';
+        else if (newAvailable <= product.reorderThreshold) status = 'Low Stock';
+
+        await tx.product.update({
+          where: { id: product.id },
+          data: {
+            onHand: newOnHand,
+            availableStock: newAvailable,
+            status,
+          },
+        });
+
+        // Insert immutable stock ledger entry
+        await tx.stockLedgerEntry.create({
+          data: {
+            enterpriseId,
+            productId: product.id,
+            sku: product.sku,
+            productName: product.name,
+            action: 'DISPATCH',
+            quantity: -qty,
+            fromLocation: locationLabel,
+            toLocation: data.customerName ? `Customer: ${data.customerName.trim()}` : 'Walk-in Customer',
+            performedBy: userName || userId,
+            performedByRole: userRole || 'cashier',
+            reference: receiptNumber,
+            metadata: {
+              type: 'POS_SALE',
+              receiptNumber,
+              unitPrice,
+              totalPrice: unitPrice * qty,
+              paymentMethod: data.paymentMethod,
+              cashier: userName,
+              locationId: fulfillmentLocation?.id || null,
+              locationName: fulfillmentLocation?.name || null,
+            },
+          },
+        });
+
+        processedItems.push({
+          sku: product.sku,
+          name: product.name,
+          baseUnit: product.baseUnit,
+          quantity: qty,
+          unitPrice,
+          total: unitPrice * qty,
+        });
+      }
+
+      const discountRate = Math.max(0, Number(data.discount) || 0);
+      const discountAmount = Number(((subtotal * discountRate) / 100).toFixed(2));
+      const taxableAmount = Math.max(0, subtotal - discountAmount);
+      const taxRate = typeof data.taxRate === 'number' ? data.taxRate : 0.08;
+      const taxAmount = Number((taxableAmount * taxRate).toFixed(2));
+      const grandTotal = Number((taxableAmount + taxAmount).toFixed(2));
+      const amountPaid = typeof data.amountPaid === 'number' && data.amountPaid > 0 ? data.amountPaid : grandTotal;
+      const changeDue = Number(Math.max(0, amountPaid - grandTotal).toFixed(2));
+
+      return {
+        success: true,
+        receiptNumber,
+        timestamp: new Date().toISOString(),
+        cashier: userName || 'Cashier',
+        items: processedItems,
+        subtotal: Number(subtotal.toFixed(2)),
+        discountPercent: discountRate,
+        discountAmount,
+        taxRate: Number((taxRate * 100).toFixed(1)),
+        taxAmount,
+        total: grandTotal,
+        paymentMethod: data.paymentMethod || 'cash',
+        amountPaid: Number(amountPaid.toFixed(2)),
+        change: changeDue,
+        customerName: data.customerName ? data.customerName.trim() : 'Walk-in Customer',
+      };
+    });
+  }
 }
+

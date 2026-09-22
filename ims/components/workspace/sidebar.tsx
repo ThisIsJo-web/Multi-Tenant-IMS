@@ -14,6 +14,8 @@ import {
   Settings,
   Sparkles,
   Building2,
+  Store,
+  ArrowRight,
 } from "lucide-react";
 
 export function Sidebar() {
@@ -69,9 +71,9 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 shrink-0 bg-white border-r border-slate-200/80 min-h-[calc(100vh-57px)] p-4 flex flex-col justify-between">
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Navigation Links */}
-        <div>
+        <div data-tour="sidebar-nav">
           <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">
             Inventory Navigation
           </div>
@@ -99,6 +101,56 @@ export function Sidebar() {
             })}
           </nav>
         </div>
+
+        {/* Standalone POS Terminal Launcher */}
+        {(() => {
+          const isPosEnabled = activeEnterprise?.metadata?.posEnabled !== false;
+          if (!isPosEnabled && !canEditWorkspace) return null;
+
+          return (
+            <div data-tour="pos-launcher" className="pt-2 border-t border-slate-100">
+              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2 flex items-center justify-between">
+                <span>Storefront Terminal</span>
+                <span
+                  className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                    isPosEnabled
+                      ? "text-slate-700 bg-slate-100 border-slate-200"
+                      : "text-slate-400 bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  {isPosEnabled ? "ACTIVE" : "DISABLED"}
+                </span>
+              </div>
+              <Link
+                href={`/pos/${targetSlug}`}
+                className={`flex items-center justify-between p-3 rounded-xl border transition group cursor-pointer shadow-2xs ${
+                  isPosEnabled
+                    ? "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-900"
+                    : "bg-slate-50/70 border-slate-200/80 text-slate-500 hover:bg-slate-100/70"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`p-1.5 rounded-lg font-bold ${
+                      isPosEnabled ? "bg-slate-900 text-white" : "bg-slate-300 text-slate-600"
+                    }`}
+                  >
+                    <Store className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-950 flex items-center gap-1">
+                      <span>POS Terminal</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {isPosEnabled ? "Cashier & Barcode Scanner" : "Disabled by Manager"}
+                    </div>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 group-hover:text-slate-900 transition" />
+              </Link>
+            </div>
+          );
+        })()}
 
         {/* Workspace Quick Spec */}
         {activeEnterprise && (

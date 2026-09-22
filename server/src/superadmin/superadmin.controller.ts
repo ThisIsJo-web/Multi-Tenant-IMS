@@ -1,12 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '../common/index.js';
+import { AuthGuard, CurrentUser } from '../common/index.js';
 import { PermTypesGuard, RequirePermissions } from '../permtypes/index.js';
 import { EnterpriseService } from '../enterprise/enterprise.service.js';
 
@@ -44,5 +45,25 @@ export class SuperAdminController {
   @Get('enterprises')
   async getAllEnterprises() {
     return this.enterpriseService.getAllEnterprises();
+  }
+
+  /**
+   * Action: system:manage
+   * SuperAdmin: Remove Enterprise workspace freely
+   */
+  @Delete('enterprises/:id')
+  async deleteEnterprise(
+    @CurrentUser('id') userId: string,
+    @Param('id') enterpriseId: string,
+  ) {
+    return this.enterpriseService.deleteEnterprise(userId, enterpriseId);
+  }
+
+  @Post('enterprises/:id/delete')
+  async deleteEnterprisePost(
+    @CurrentUser('id') userId: string,
+    @Param('id') enterpriseId: string,
+  ) {
+    return this.enterpriseService.deleteEnterprise(userId, enterpriseId);
   }
 }

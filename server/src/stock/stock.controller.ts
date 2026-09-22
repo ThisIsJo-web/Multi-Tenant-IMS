@@ -147,9 +147,13 @@ export class StockController {
 
   @Delete('locations/:id')
   @RequirePermissions('stock:adjust')
-  async deleteLocation(@Req() req: any, @Param('id') id: string) {
+  async deleteLocation(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('force') force?: string,
+  ) {
     const enterpriseId = this.resolveEnterpriseId(req);
-    return this.stockService.deleteLocation(enterpriseId, id);
+    return this.stockService.deleteLocation(enterpriseId, id, force === 'true');
   }
 
   // ==========================================
@@ -229,6 +233,40 @@ export class StockController {
       enterpriseId,
       user?.id,
       user?.name || user?.email || 'User',
+      user?.role || 'staff',
+      body,
+    );
+  }
+
+  /**
+   * POS Terminal: Checkout & Real-Time Stock Dispatch
+   */
+  @Post('pos/checkout')
+  @RequirePermissions('stock:view')
+  async posCheckout(
+    @CurrentUser() user: any,
+    @Req() req: any,
+    @Body()
+    body: {
+      items: Array<{
+        sku: string;
+        quantity: number;
+        unitPrice: number;
+      }>;
+      paymentMethod: string;
+      amountPaid?: number;
+      discount?: number;
+      taxRate?: number;
+      customerName?: string;
+      notes?: string;
+      locationId?: string;
+    },
+  ) {
+    const enterpriseId = this.resolveEnterpriseId(req);
+    return this.stockService.posCheckout(
+      enterpriseId,
+      user?.id,
+      user?.name || user?.email || 'Cashier',
       user?.role || 'staff',
       body,
     );

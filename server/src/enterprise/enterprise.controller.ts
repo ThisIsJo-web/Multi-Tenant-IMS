@@ -2,10 +2,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
   Post,
+  Query,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -36,6 +39,51 @@ export class EnterpriseController {
       enterprise: result.enterprise,
       membership: result.membership,
     });
+  }
+
+  /**
+   * Authenticated: Delete enterprise workspace
+   * SuperAdmin can delete freely.
+   * Manager can delete with verification code (matching enterpriseKey, name, or slug).
+   * Supports code passed via query string (?code=...), body ({ code: ... }), or raw payload.
+   */
+  @Delete(':id')
+  @UseGuards(AuthGuard)
+  async deleteEnterprise(
+    @CurrentUser('id') userId: string,
+    @Param('id') enterpriseId: string,
+    @Query('code') queryCode?: string,
+    @Body('code') bodyCode?: string,
+    @Req() req?: any,
+  ) {
+    const code =
+      queryCode ||
+      bodyCode ||
+      req?.query?.code ||
+      req?.body?.code ||
+      (typeof req?.body === 'string' ? req.body : undefined);
+    return this.enterpriseService.deleteEnterprise(userId, enterpriseId, code);
+  }
+
+  /**
+   * Fallback POST endpoint for clients/proxies that drop HTTP DELETE body/query
+   */
+  @Post(':id/delete')
+  @UseGuards(AuthGuard)
+  async deleteEnterprisePost(
+    @CurrentUser('id') userId: string,
+    @Param('id') enterpriseId: string,
+    @Query('code') queryCode?: string,
+    @Body('code') bodyCode?: string,
+    @Req() req?: any,
+  ) {
+    const code =
+      queryCode ||
+      bodyCode ||
+      req?.query?.code ||
+      req?.body?.code ||
+      (typeof req?.body === 'string' ? req.body : undefined);
+    return this.enterpriseService.deleteEnterprise(userId, enterpriseId, code);
   }
 
   /**

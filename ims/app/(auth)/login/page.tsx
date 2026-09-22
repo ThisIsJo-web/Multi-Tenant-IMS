@@ -54,12 +54,12 @@ export default function LoginPage() {
         const ctxRes = await fetch("/api/enterprise/context");
         if (ctxRes.ok) {
           const ctxData = await ctxRes.json();
-          if (ctxData.user?.role === "superadmin") {
+          if (ctxData.activeEnterprise) {
+            router.push("/workspace");
+          } else if (ctxData.user?.role === "superadmin") {
             router.push("/superadmin");
           } else if (ctxData.user?.role === "manager") {
             router.push("/manager");
-          } else if (ctxData.activeEnterprise) {
-            router.push("/workspace");
           } else {
             router.push("/enter-key");
           }

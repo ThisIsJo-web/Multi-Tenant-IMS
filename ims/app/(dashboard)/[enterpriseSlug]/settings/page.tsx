@@ -16,6 +16,9 @@ import {
   ShieldAlert,
   ShieldCheck,
   AlertCircle,
+  Trash2,
+  Store,
+  MapPin,
 } from "lucide-react";
 
 export default function WorkspaceSettingsPage() {
@@ -34,13 +37,22 @@ export default function WorkspaceSettingsPage() {
   const [businessScale, setBusinessScale] = useState("");
   const [description, setDescription] = useState("");
   const [currency, setCurrency] = useState("USD");
+  const [posEnabled, setPosEnabled] = useState(true);
+  const [defaultPosLocationId, setDefaultPosLocationId] = useState("");
+  const [locations, setLocations] = useState<any[]>([]);
 
   const [showKey, setShowKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingPos, setIsSavingPos] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Enterprise Deletion with code state
+  const [deleteCode, setDeleteCode] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeEnterprise) {
@@ -52,6 +64,28 @@ export default function WorkspaceSettingsPage() {
       setBusinessScale(meta.businessScale || "Medium (20-100 staff)");
       setDescription(meta.description || "");
       setCurrency(meta.currency || "USD");
+      setPosEnabled(meta.posEnabled !== false);
+      setDefaultPosLocationId(meta.defaultPosLocationId || "");
+
+      // Fetch warehouse locations for default fulfillment selector
+      fetch("/api/stock/locations", {
+        headers: { "x-enterprise-id": activeEnterprise.id },
+      })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data) => {
+          const flatList: any[] = [];
+          const flatten = (items: any[]) => {
+            for (const item of items) {
+              flatList.push(item);
+              if (item.children && Array.isArray(item.children)) {
+                flatten(item.children);
+              }
+            }
+          };
+          if (Array.isArray(data)) flatten(data);
+          setLocations(flatList);
+        })
+        .catch(() => {});
     }
   }, [activeEnterprise]);
 
@@ -63,13 +97,6 @@ export default function WorkspaceSettingsPage() {
 
   const handleRotateKey = async () => {
     if (!canEditWorkspace || !activeEnterprise) return;
-    if (
-      !confirm(
-        `Are you sure you want to regenerate the Enterprise Key for ${activeEnterprise.name}? The previous key will stop working immediately.`
-      )
-    ) {
-      return;
-    }
 
     setIsRotating(true);
     setErrorMessage(null);
@@ -105,33 +132,95 @@ export default function WorkspaceSettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          slug: slug.trim(),
           logo: logo.trim() || null,
-          metadata: {
-            industry: industry.trim(),
-            businessScale,
-            description: description.trim(),
-            currency,
-            lastEditedAt: new Date().toISOString(),
-          },
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to update workspace");
 
-      setSuccessMessage("Workspace settings updated successfully!");
       await refreshContext();
-
-      if (data.enterprise?.slug && data.enterprise.slug !== activeEnterprise.slug) {
-        setTimeout(() => {
-          router.push(`/${data.enterprise.slug}/settings`);
-        }, 1200);
-      }
+      setSuccessMessage("Workspace settings updated successfully.");
     } catch (err: any) {
       setErrorMessage(err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSavePosSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEditWorkspace || !activeEnterprise) return;
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSavingPos(true);
+
+    try {
+      const existingMeta = (activeEnterprise.metadata as Record<string, any>) || {};
+      const updatedMeta = {
+        ...existingMeta,
+        posEnabled,
+        defaultPosLocationId: defaultPosLocationId || null,
+      };
+
+      const res = await fetch(`/api/enterprise/${activeEnterprise.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: updatedMeta }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update POS settings");
+
+      await refreshContext();
+      setSuccessMessage("Point of Sale (POS) settings saved successfully.");
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    } finally {
+      setIsSavingPos(false);
+    }
+  };
+
+  const handleDeleteEnterprise = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEditWorkspace || !activeEnterprise) return;
+    if (!deleteCode.trim()) {
+      setDeleteError("Please enter the verification code (Enterprise Key or Name) to confirm deletion.");
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const code = deleteCode.trim();
+      // Send code in both URL query param and JSON body to ensure proxy compatibility
+      let res = await fetch(
+        `/api/enterprise/${activeEnterprise.id}?code=${encodeURIComponent(code)}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        }
+      );
+
+      // If DELETE failed or was rejected by proxy, try fallback POST endpoint
+      if (!res.ok && res.status !== 400 && res.status !== 403 && res.status !== 404) {
+        res = await fetch(`/api/enterprise/${activeEnterprise.id}/delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to delete enterprise");
+
+      window.location.href = "/workspace";
+    } catch (err: any) {
+      setDeleteError(err.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -275,6 +364,79 @@ export default function WorkspaceSettingsPage() {
             />
           </div>
 
+          {/* Point of Sale (POS) Integration Settings */}
+          <div className="bg-slate-50/80 rounded-xl border border-slate-200/80 p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <Store className="w-4 h-4 text-slate-700" />
+                  Point of Sale (POS) System Integration
+                </span>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Decide whether your enterprise operates a storefront cashier POS terminal connected to IMS inventory.
+                </p>
+              </div>
+
+              {canEditWorkspace && (
+                <button
+                  type="button"
+                  onClick={() => setPosEnabled(!posEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    posEnabled ? "bg-slate-900" : "bg-slate-300"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      posEnabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <span
+                className={`text-xs font-semibold px-2.5 py-0.5 rounded-md border ${
+                  posEnabled
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-slate-100 text-slate-600 border-slate-200"
+                }`}
+              >
+                {posEnabled ? "POS Enabled" : "POS Disabled"}
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {posEnabled
+                  ? "Cashiers and members can access the POS storefront at /pos/" + (activeEnterprise?.slug || "")
+                  : "Access to the POS terminal is blocked and links are hidden."}
+              </span>
+            </div>
+
+            {posEnabled && (
+              <div className="pt-3 border-t border-slate-200/60 space-y-2">
+                <label className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                  Default POS Dispatch Warehouse Location
+                </label>
+                <select
+                  value={defaultPosLocationId}
+                  onChange={(e) => setDefaultPosLocationId(e.target.value)}
+                  disabled={!canEditWorkspace}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 transition"
+                >
+                  <option value="">Auto-deduct across all locations (Default)</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name} ({loc.code}) — {loc.type}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400">
+                  Sales rang up in POS will prioritize deducting inventory balances from this physical location.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Enterprise Access Key Management */}
           <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-5 space-y-3">
             <div className="flex items-center justify-between">
@@ -354,6 +516,70 @@ export default function WorkspaceSettingsPage() {
           )}
         </form>
       </div>
+
+      {/* Danger Zone: Delete Enterprise with Code */}
+      {canEditWorkspace && (
+        <div className="bg-white rounded-2xl border border-rose-200/80 p-6 shadow-xs space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 shrink-0">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-rose-950">Danger Zone: Delete Enterprise Workspace</h2>
+              <p className="text-xs text-rose-800/80 mt-1 leading-relaxed">
+                Permanently deletes <strong>{activeEnterprise?.name}</strong>, including all SKU products, warehouse locations, and immutable ledger transactions.
+                As an enterprise manager, you can delete this workspace freely by verifying with your <strong>Enterprise Key</strong> (<code>{activeEnterprise?.enterpriseKey}</code>) or workspace name.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleDeleteEnterprise} className="pt-3 border-t border-rose-100 space-y-3">
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Enter Enterprise Key or Workspace Name to verify authorization:
+                </label>
+                {activeEnterprise?.enterpriseKey && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteCode(activeEnterprise.enterpriseKey || "")}
+                    className="text-[11px] text-rose-600 hover:text-rose-800 font-semibold cursor-pointer underline"
+                  >
+                    Paste Key
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <input
+                  type="text"
+                  placeholder={`e.g. ${activeEnterprise?.enterpriseKey || activeEnterprise?.name || "ENT-XXXX-XXXX-XXXX"}`}
+                  value={deleteCode}
+                  onChange={(e) => setDeleteCode(e.target.value)}
+                  className="flex-1 text-xs font-mono px-3.5 py-2.5 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/20"
+                />
+                <button
+                  type="submit"
+                  disabled={isDeleting || !deleteCode.trim()}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <Trash2 className={`w-3.5 h-3.5 ${isDeleting ? "animate-spin" : ""}`} />
+                  <span>{isDeleting ? "Deleting..." : "Verify & Delete Enterprise"}</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1.5">
+                SuperAdmins can also delete enterprises freely from the SuperAdmin console without a code.
+              </p>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

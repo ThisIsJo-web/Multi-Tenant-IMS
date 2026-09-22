@@ -130,6 +130,7 @@ model EnterpriseMember {
   updatedAt     DateTime    @updatedAt
 
   @@unique([enterpriseId, userId])
+  @@index([userId])
   @@map("enterprise_members")
   @@schema("public")
 }
@@ -216,6 +217,7 @@ model Product {
 
   @@unique([enterpriseId, sku])
   @@index([enterpriseId])
+  @@index([enterpriseId, status])
   @@map("products")
   @@schema("public")
 }
@@ -237,6 +239,7 @@ model WarehouseLocation {
 
   @@unique([enterpriseId, code])
   @@index([enterpriseId])
+  @@index([parentId])
   @@map("warehouse_locations")
   @@schema("public")
 }
@@ -255,6 +258,8 @@ model LocationBalance {
   @@unique([productId, locationId])
   @@index([enterpriseId])
   @@index([locationId])
+  @@index([productId])
+  @@index([enterpriseId, locationId])
   @@map("location_balances")
   @@schema("public")
 }
@@ -281,6 +286,10 @@ model StockLedgerEntry {
   @@index([sku])
   @@index([action])
   @@index([createdAt])
+  @@index([enterpriseId, createdAt])
+  @@index([enterpriseId, action])
+  @@index([enterpriseId, sku])
+  @@index([productId])
   @@map("stock_ledger_entries")
   @@schema("public")
 }

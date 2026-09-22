@@ -41,10 +41,15 @@ export class PermTypesGuard implements CanActivate {
     }
 
     // 2. Resolve target enterprise context from HTTP request
+    const isEnterpriseScopedParam =
+      request.baseUrl?.includes('enterprise') ||
+      request.path?.includes('/enterprise') ||
+      request.route?.path?.includes('/enterprise');
+
     let enterpriseId =
       (request.headers['x-enterprise-id'] as string) ||
       request.params?.enterpriseId ||
-      request.params?.id ||
+      (isEnterpriseScopedParam ? request.params?.id : undefined) ||
       request.session?.activeEnterpriseId ||
       request.body?.enterpriseId ||
       (request.query?.enterpriseId as string);

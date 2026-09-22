@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Koll — Sign In",
-  description: "Sign in to your Koll workspace",
+  title: "Koll — Enterprise ERP & Inventory Platform",
+  description: "Multi-tenant inventory control, point of sale, and supply chain management platform.",
 };
 
 export default function RootLayout({

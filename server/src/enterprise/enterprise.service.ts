@@ -292,7 +292,33 @@ export class EnterpriseService {
       },
     });
 
+    const requestingUser = await this.prisma.user.findUnique({ where: { id: userId } });
+
     if (!membership) {
+      if (requestingUser?.role === 'superadmin') {
+        // SuperAdmin has platform authority across all enterprises
+        await this.prisma.session.update({
+          where: { id: sessionId },
+          data: { activeEnterpriseId: enterprise.id },
+        });
+        return {
+          status: 'active',
+          message: `Switched active workspace to "${enterprise.name}"`,
+          activeEnterpriseId: enterprise.id,
+          enterprise: {
+            id: enterprise.id,
+            name: enterprise.name,
+            slug: enterprise.slug,
+            logo: enterprise.logo,
+            enterpriseKey: enterprise.enterpriseKey,
+          },
+          membership: {
+            role: 'manager',
+            permissions: ['*'],
+          },
+        };
+      }
+
       if (options.enterpriseKey) {
         // Check for existing pending join request
         const existingRequest = await this.prisma.enterpriseJoinRequest.findFirst({
@@ -511,12 +537,31 @@ export class EnterpriseService {
     }
 
     // Fetch all user's memberships
-    const memberships = await this.prisma.enterpriseMember.findMany({
+    let memberships = await this.prisma.enterpriseMember.findMany({
       where: { userId },
       include: {
         enterprise: true,
       },
     });
+
+    if (user.role === 'superadmin') {
+      const allEnterprises = await this.prisma.enterprise.findMany();
+      const existingIds = new Set(memberships.map((m) => m.enterpriseId));
+      for (const ent of allEnterprises) {
+        if (!existingIds.has(ent.id)) {
+          memberships.push({
+            id: `admin-${ent.id}`,
+            enterpriseId: ent.id,
+            userId,
+            role: 'manager',
+            permissions: ['*'],
+            createdAt: ent.createdAt,
+            updatedAt: ent.updatedAt,
+            enterprise: ent,
+          } as any);
+        }
+      }
+    }
 
     let activeEnterprise = null;
     let activeMembership = null;
@@ -680,5 +725,122 @@ export class EnterpriseService {
         permissions: m.permissions,
       })),
     }));
+  }
+
+  /**
+   * Delete Enterprise:
+   * - SuperAdmin can remove Enterprises freely (no code required).
+   * - Manager can remove Enterprises freely with code (code must match the enterprise's enterpriseKey, name, or slug).
+   */
+  async deleteEnterprise(userId: string, enterpriseId: string, code?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const enterprise = await this.prisma.enterprise.findUnique({
+      where: { id: enterpriseId },
+    });
+
+    if (!enterprise) {
+      throw new NotFoundException(`Enterprise with ID ${enterpriseId} not found`);
+    }
+
+    const isSuperAdmin = user.role === 'superadmin';
+
+    if (!isSuperAdmin) {
+      // Check if user is a manager in this enterprise or has manager user role
+      const membership = await this.prisma.enterpriseMember.findUnique({
+        where: {
+          enterpriseId_userId: {
+            enterpriseId,
+            userId,
+          },
+        },
+      });
+
+      const isManager = membership?.role === 'manager' || user.role === 'manager';
+
+      if (!isManager) {
+        throw new ForbiddenException('Only SuperAdmins or Enterprise Managers can delete this workspace');
+      }
+
+      // Verification code is required for Managers: code can match enterpriseKey, slug, or name (case-insensitive & trimmed)
+      const cleanCode = (code || '').trim();
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      const matchesKey =
+        cleanCode.toLowerCase() === enterprise.enterpriseKey.toLowerCase() ||
+        normalize(cleanCode) === normalize(enterprise.enterpriseKey);
+      const matchesSlug = cleanCode.toLowerCase() === enterprise.slug.toLowerCase();
+      const matchesName = cleanCode.toLowerCase() === enterprise.name.toLowerCase();
+
+      if (!cleanCode || (!matchesKey && !matchesSlug && !matchesName)) {
+        throw new BadRequestException(
+          `Verification code is required for Managers. Please provide the Enterprise Key (${enterprise.enterpriseKey}) or Enterprise Name to confirm deletion.`,
+        );
+      }
+    }
+
+    // Robust transactional cascade cleanup
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Clear activeEnterpriseId from any user sessions pointing to this enterprise
+      await tx.session.updateMany({
+        where: { activeEnterpriseId: enterpriseId },
+        data: { activeEnterpriseId: null },
+      });
+
+      // 2. Clear location balances
+      await tx.locationBalance.deleteMany({
+        where: { enterpriseId },
+      });
+
+      // 3. Clear stock ledger entries
+      await tx.stockLedgerEntry.deleteMany({
+        where: { enterpriseId },
+      });
+
+      // 4. Clear products
+      await tx.product.deleteMany({
+        where: { enterpriseId },
+      });
+
+      // 5. Break parent-child hierarchy in warehouse locations before deleting them
+      await tx.warehouseLocation.updateMany({
+        where: { enterpriseId },
+        data: { parentId: null },
+      });
+      await tx.warehouseLocation.deleteMany({
+        where: { enterpriseId },
+      });
+
+      // 6. Delete invitations, join requests, and members
+      await tx.enterpriseInvitation.deleteMany({
+        where: { enterpriseId },
+      });
+      await tx.enterpriseJoinRequest.deleteMany({
+        where: { enterpriseId },
+      });
+      await tx.enterpriseMember.deleteMany({
+        where: { enterpriseId },
+      });
+
+      // 7. Finally delete the enterprise
+      await tx.enterprise.delete({
+        where: { id: enterpriseId },
+      });
+    });
+
+    this.logger.log(
+      `Enterprise ${enterprise.name} (${enterprise.id}) deleted by ${user.email} (Role: ${user.role})`,
+    );
+
+    return {
+      message: `Enterprise "${enterprise.name}" has been deleted successfully.`,
+      enterpriseId,
+    };
   }
 }

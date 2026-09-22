@@ -21,12 +21,19 @@ import {
   Clock,
   ExternalLink,
   ShieldCheck,
+  Store,
+  Sparkles,
 } from "lucide-react";
 import {
   ReceiveStockModal,
   TransferStockModal,
 } from "@/components/workspace/operation-modals";
 import { ProductModal } from "@/components/workspace/product-modal";
+import {
+  GuidedWalkthrough,
+  GuidedTourTrigger,
+} from "@/components/walkthrough/guided-walkthrough";
+import { WORKSPACE_WALKTHROUGH_STEPS } from "@/components/walkthrough/walkthrough-steps";
 
 export default function DashboardPage() {
   const { targetSlug, activeEnterprise } = useWorkspace();
@@ -34,6 +41,7 @@ export default function DashboardPage() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isTourOpen, setIsTourOpen] = useState(false);
 
   // Modal states
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
@@ -70,6 +78,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
+    const handleStartTour = () => setIsTourOpen(true);
+    window.addEventListener("start-workspace-tour", handleStartTour);
+    return () => window.removeEventListener("start-workspace-tour", handleStartTour);
   }, [fetchData]);
 
   const handleQuickReorder = (sku: string) => {
@@ -107,6 +118,21 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/pos/${targetSlug}`}
+            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            title="Launch Dedicated POS Cashier Terminal"
+          >
+            <Store className="w-3.5 h-3.5 text-slate-600" />
+            <span>POS Cashier</span>
+          </Link>
+
+          <GuidedTourTrigger
+            onTrigger={() => setIsTourOpen(true)}
+            label="Tour"
+            className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs"
+          />
+
           <button
             onClick={() => {
               setReorderSku(undefined);
@@ -137,7 +163,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 4 Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div data-tour="dashboard-metrics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total SKUs */}
         <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs">
           <div className="flex items-center justify-between">
@@ -409,6 +435,14 @@ export default function DashboardPage() {
         onClose={() => setIsAddProductOpen(false)}
         onSaved={fetchData}
         locations={locations}
+      />
+
+      {/* Interactive Guided Walkthrough for Dashboard */}
+      <GuidedWalkthrough
+        tourKey="enterprise_dashboard"
+        steps={WORKSPACE_WALKTHROUGH_STEPS}
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
       />
     </div>
   );

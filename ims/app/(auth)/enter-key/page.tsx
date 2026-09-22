@@ -64,12 +64,12 @@ export default function EnterKeyGatePage() {
       })
       .then((data) => {
         setCurrentUser(data.user);
-        if (data.user?.role === "superadmin") {
+        if (data.activeEnterprise) {
+          router.push("/workspace");
+        } else if (data.user?.role === "superadmin") {
           router.push("/superadmin");
         } else if (data.user?.role === "manager") {
           router.push("/manager");
-        } else if (data.activeEnterprise) {
-          router.push("/workspace");
         }
       })
       .catch(() => {

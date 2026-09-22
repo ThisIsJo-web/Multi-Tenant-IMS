@@ -14,10 +14,10 @@ export default function RootRouterPage() {
         return res.json();
       })
       .then((data) => {
-        if (data.user?.role === "superadmin") {
+        if (data.activeEnterprise) {
+          router.replace("/workspace");
+        } else if (data.user?.role === "superadmin") {
           router.replace("/superadmin");
-        } else if (data.activeEnterprise) {
-          router.replace(`/${data.activeEnterprise.slug}`);
         } else if (data.user?.role === "manager") {
           router.replace("/manager");
         } else {

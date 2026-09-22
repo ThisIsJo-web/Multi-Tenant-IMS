@@ -84,14 +84,6 @@ export function EditWorkspaceModal() {
   };
 
   const handleRotateKey = async () => {
-    if (
-      !confirm(
-        `Are you sure you want to regenerate the Enterprise Key for ${activeEnterprise.name}? The previous key will stop working immediately.`
-      )
-    ) {
-      return;
-    }
-
     setIsRotating(true);
     setErrorMessage(null);
     try {

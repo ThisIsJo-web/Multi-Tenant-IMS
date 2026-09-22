@@ -17,6 +17,7 @@ import {
   Shield,
   Sparkles,
   Edit3,
+  Store,
 } from "lucide-react";
 
 export function TopBar() {
@@ -56,7 +57,7 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-6 py-3 flex items-center justify-between">
       {/* Left: Enterprise Branding & Key */}
-      <div className="flex items-center gap-4 flex-wrap">
+      <div data-tour="workspace-header" className="flex items-center gap-4 flex-wrap">
         {/* Active Enterprise Badge */}
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
@@ -101,7 +102,7 @@ export function TopBar() {
               className="p-1.5 hover:bg-white text-slate-600 hover:text-slate-900 rounded-md border border-transparent hover:border-slate-200 transition cursor-pointer"
               title="Copy Enterprise Key"
             >
-              {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedKey ? <Check className="w-3.5 h-3.5 text-slate-900" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
           </div>
         )}
@@ -156,6 +157,42 @@ export function TopBar() {
       {/* Right: Workspace Editing (Manager) & User Profile */}
       <div className="flex items-center gap-3">
         {/* Edit Workspace Quick Action (Managers & SuperAdmin Only) */}
+        {/* POS Terminal Launcher Link */}
+        {(() => {
+          const isPosEnabled = activeEnterprise?.metadata?.posEnabled !== false;
+          if (!isPosEnabled && !canEditWorkspace) return null;
+
+          return (
+            <Link
+              href={`/pos/${activeEnterprise?.slug}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition shadow-2xs cursor-pointer ${
+                isPosEnabled
+                  ? "border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-semibold"
+                  : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+              }`}
+              title={isPosEnabled ? "Open Dedicated Cashier POS Terminal" : "POS is Disabled (Manager Only Preview)"}
+            >
+              <Store className="w-3.5 h-3.5 text-slate-700" />
+              <span className="hidden sm:inline">POS Terminal</span>
+              {!isPosEnabled && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-200 text-slate-600">
+                  Off
+                </span>
+              )}
+            </Link>
+          );
+        })()}
+
+        {/* Guided Tour Trigger Button */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent("start-workspace-tour"))}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 transition shadow-2xs cursor-pointer"
+          title="Start interactive guided walkthrough"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-slate-600" />
+          <span className="hidden md:inline">Tour</span>
+        </button>
+
         {canEditWorkspace && (
           <button
             onClick={openEditModal}
@@ -168,7 +205,7 @@ export function TopBar() {
         )}
 
         {/* User Info & Scoped Role */}
-        <div className="relative">
+        <div data-tour="workspace-permissions" className="relative">
           <button
             onClick={() => {
               setShowUserMenu(!showUserMenu);
